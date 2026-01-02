@@ -2,57 +2,59 @@ import streamlit as st
 import pypandoc
 import tempfile
 import os
+from pathlib import Path
 
 # ======================================================
-# Ensure Pandoc is available (CRITICAL for Streamlit Cloud)
+# FORCE Pandoc installation & path registration
 # ======================================================
-try:
-    pandoc_version = pypandoc.get_pandoc_version()
-except OSError:
-    pypandoc.download_pandoc()
-    pandoc_version = pypandoc.get_pandoc_version()
+PANDOC_DIR = Path.home() / ".pandoc"
+PANDOC_BIN = PANDOC_DIR / "pandoc"
+
+def ensure_pandoc():
+    try:
+        return pypandoc.get_pandoc_version()
+    except OSError:
+        pypandoc.download_pandoc(targetfolder=str(PANDOC_DIR))
+        os.environ["PYPANDOC_PANDOC"] = str(PANDOC_BIN)
+        os.environ["PATH"] += os.pathsep + str(PANDOC_DIR)
+        return pypandoc.get_pandoc_version()
+
+pandoc_version = ensure_pandoc()
 
 # ======================================================
 # Streamlit UI
 # ======================================================
-st.set_page_config(
-    page_title="Markdown to Word Converter",
-    layout="centered"
-)
+st.set_page_config(page_title="Markdown → Word Converter")
 
 st.title("📄 Markdown → Word (.docx) Converter")
 st.caption(f"Pandoc version: {pandoc_version}")
 
-st.markdown(
-    """
+st.markdown("""
 ✅ Supports:
-- Headings  
-- Tables  
-- Lists  
-- Images  
-- **LaTeX equations** (`$...$`, `$$...$$`)  
-"""
-)
+- Headings
+- Tables
+- Lists
+- Images
+- **LaTeX equations** (`$...$`, `$$...$$`)
+""")
 
 md_text = st.text_area(
-    "✍️ Paste your Markdown content here:",
+    "✍️ Paste Markdown here",
     height=300,
-    placeholder="# Sample\n\nThis is **Markdown** with $E=mc^2$"
+    placeholder="# Example\n\nEquation: $E = mc^2$"
 )
 
 uploaded_md = st.file_uploader(
-    "📂 Or upload a Markdown (.md) file",
+    "📂 Or upload a .md file",
     type=["md"]
 )
 
-convert_btn = st.button("🚀 Convert to Word")
-
 # ======================================================
-# Conversion Logic
+# Conversion
 # ======================================================
-if convert_btn:
+if st.button("🚀 Convert to Word"):
     if not md_text and not uploaded_md:
-        st.warning("⚠️ Please paste Markdown or upload a .md file.")
+        st.warning("⚠️ Please provide Markdown input.")
     else:
         with tempfile.TemporaryDirectory() as tmpdir:
             md_path = os.path.join(tmpdir, "input.md")
@@ -66,17 +68,17 @@ if convert_btn:
 
             try:
                 pypandoc.convert_file(
-                    md_path,
-                    "docx",
+                    source_file=md_path,
+                    to="docx",
                     outputfile=docx_path,
                     extra_args=["--standalone"]
                 )
 
                 with open(docx_path, "rb") as f:
-                    st.success("✅ Conversion successful!")
+                    st.success("✅ Conversion successful")
                     st.download_button(
-                        label="⬇️ Download Word File",
-                        data=f,
+                        "⬇️ Download Word File",
+                        f,
                         file_name="converted.docx",
                         mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
                     )
@@ -85,8 +87,5 @@ if convert_btn:
                 st.error("❌ Conversion failed")
                 st.exception(e)
 
-# ======================================================
-# Footer
-# ======================================================
 st.markdown("---")
-st.caption("🔬 Designed for researchers, students & academic writing")
+st.caption("🔬 Academic-grade Markdown → Word converter")
