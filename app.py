@@ -1,51 +1,42 @@
 import streamlit as st
-import pypandoc
 import tempfile
+import subprocess
 import os
-from pathlib import Path
+import shutil
 
 # ======================================================
-# FORCE Pandoc installation & path registration
+# Check pandoc availability
 # ======================================================
-PANDOC_DIR = Path.home() / ".pandoc"
-PANDOC_BIN = PANDOC_DIR / "pandoc"
+pandoc_path = shutil.which("pandoc")
 
-def ensure_pandoc():
-    try:
-        return pypandoc.get_pandoc_version()
-    except OSError:
-        pypandoc.download_pandoc(targetfolder=str(PANDOC_DIR))
-        os.environ["PYPANDOC_PANDOC"] = str(PANDOC_BIN)
-        os.environ["PATH"] += os.pathsep + str(PANDOC_DIR)
-        return pypandoc.get_pandoc_version()
-
-pandoc_version = ensure_pandoc()
+if pandoc_path is None:
+    st.error("❌ Pandoc is not available in this environment.")
+    st.stop()
 
 # ======================================================
 # Streamlit UI
 # ======================================================
 st.set_page_config(page_title="Markdown → Word Converter")
-
 st.title("📄 Markdown → Word (.docx) Converter")
-st.caption(f"Pandoc version: {pandoc_version}")
+st.caption(f"Using Pandoc at: {pandoc_path}")
 
 st.markdown("""
 ✅ Supports:
-- Headings
-- Tables
-- Lists
-- Images
-- **LaTeX equations** (`$...$`, `$$...$$`)
+- Headings  
+- Tables  
+- Lists  
+- Images  
+- **LaTeX equations** (`$...$`, `$$...$$`)  
 """)
 
 md_text = st.text_area(
     "✍️ Paste Markdown here",
     height=300,
-    placeholder="# Example\n\nEquation: $E = mc^2$"
+    placeholder="# Example\n\nEquation:\n$$E = mc^2$$"
 )
 
 uploaded_md = st.file_uploader(
-    "📂 Or upload a .md file",
+    "📂 Or upload a Markdown (.md) file",
     type=["md"]
 )
 
@@ -67,11 +58,15 @@ if st.button("🚀 Convert to Word"):
                 f.write(md_text)
 
             try:
-                pypandoc.convert_file(
-                    source_file=md_path,
-                    to="docx",
-                    outputfile=docx_path,
-                    extra_args=["--standalone"]
+                subprocess.run(
+                    [
+                        pandoc_path,
+                        md_path,
+                        "-o",
+                        docx_path,
+                        "--standalone"
+                    ],
+                    check=True
                 )
 
                 with open(docx_path, "rb") as f:
@@ -83,9 +78,9 @@ if st.button("🚀 Convert to Word"):
                         mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
                     )
 
-            except Exception as e:
-                st.error("❌ Conversion failed")
-                st.exception(e)
+            except subprocess.CalledProcessError as e:
+                st.error("❌ Pandoc conversion failed")
+                st.code(str(e))
 
 st.markdown("---")
-st.caption("🔬 Academic-grade Markdown → Word converter")
+st.caption("🔬 Research-grade Markdown → Word converter (Pandoc native)")
