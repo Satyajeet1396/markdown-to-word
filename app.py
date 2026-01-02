@@ -5,7 +5,7 @@ import os
 import shutil
 
 # ======================================================
-# Check pandoc availability
+# Check if pandoc exists (Streamlit Cloud has it)
 # ======================================================
 pandoc_path = shutil.which("pandoc")
 
@@ -14,20 +14,11 @@ if pandoc_path is None:
     st.stop()
 
 # ======================================================
-# Streamlit UI
+# UI
 # ======================================================
 st.set_page_config(page_title="Markdown → Word Converter")
 st.title("📄 Markdown → Word (.docx) Converter")
-st.caption(f"Using Pandoc at: {pandoc_path}")
-
-st.markdown("""
-✅ Supports:
-- Headings  
-- Tables  
-- Lists  
-- Images  
-- **LaTeX equations** (`$...$`, `$$...$$`)  
-""")
+st.caption(f"Using Pandoc: {pandoc_path}")
 
 md_text = st.text_area(
     "✍️ Paste Markdown here",
@@ -41,7 +32,7 @@ uploaded_md = st.file_uploader(
 )
 
 # ======================================================
-# Conversion
+# Convert
 # ======================================================
 if st.button("🚀 Convert to Word"):
     if not md_text and not uploaded_md:
@@ -81,6 +72,3 @@ if st.button("🚀 Convert to Word"):
             except subprocess.CalledProcessError as e:
                 st.error("❌ Pandoc conversion failed")
                 st.code(str(e))
-
-st.markdown("---")
-st.caption("🔬 Research-grade Markdown → Word converter (Pandoc native)")
