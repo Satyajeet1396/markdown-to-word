@@ -38,7 +38,6 @@ with st.sidebar:
                 response = requests.get(raw_url)
                 response.raise_for_status()
                 st.session_state['markdown_content'] = response.text
-                st.session_state['needs_regeneration'] = True
                 st.success("✅ Successfully fetched from GitHub!")
             except Exception as e:
                 st.error(f"❌ Error fetching from GitHub: {str(e)}")
@@ -56,11 +55,6 @@ with st.sidebar:
     st.subheader("Styling Options")
     use_colors = st.checkbox("Use colored headings", value=True)
     preserve_math = st.checkbox("Convert LaTeX to Unicode", value=True)
-    
-    # Spacing options
-    st.subheader("Spacing Options")
-    remove_extra_spaces = st.checkbox("Remove extra blank lines", value=True)
-    max_consecutive_blanks = st.slider("Max consecutive blank lines", 0, 3, 1)
 
 # Initialize session state
 if 'markdown_content' not in st.session_state:
@@ -77,10 +71,6 @@ Display math:
 S = \\alpha + \\beta
 \\]
 """
-    st.session_state['needs_regeneration'] = True
-
-if 'generated_doc' not in st.session_state:
-    st.session_state['generated_doc'] = None
 
 # Helper functions
 def add_table_border(table):
@@ -337,7 +327,7 @@ def extract_and_format_text(text, paragraph, font_size, preserve_math):
         run = paragraph.add_run(current_text)
         run.font.size = Pt(font_size)
 
-def parse_markdown_to_docx(markdown_text, title, font_size, use_colors, preserve_math, remove_extra_spaces, max_blanks):
+def parse_markdown_to_docx(markdown_text, title, font_size, use_colors, preserve_math):
     """Convert markdown to Word document with formatting"""
     doc = Document()
     
@@ -358,20 +348,10 @@ def parse_markdown_to_docx(markdown_text, title, font_size, use_colors, preserve
     in_code_block = False
     code_lines = []
     in_list = False
-    consecutive_blanks = 0
     i = 0
     
     while i < len(lines):
         line = lines[i]
-        
-        # Track consecutive blank lines
-        if not line.strip():
-            consecutive_blanks += 1
-            if remove_extra_spaces and consecutive_blanks > max_blanks:
-                i += 1
-                continue
-        else:
-            consecutive_blanks = 0
         
         # Check for tables
         if '|' in line and i + 1 < len(lines) and '|' in lines[i + 1] and '---' in lines[i+1]:
@@ -405,7 +385,6 @@ def parse_markdown_to_docx(markdown_text, title, font_size, use_colors, preserve
                                     run.font.size = Pt(font_size - 1)
                 
                 i = end_idx
-                consecutive_blanks = 0
                 continue
         
         # Handle code blocks
@@ -429,13 +408,12 @@ def parse_markdown_to_docx(markdown_text, title, font_size, use_colors, preserve
             i += 1
             continue
         
-        # Handle horizontal rules
+        # Handle horizontal rules (skip empty lines created by ---)
         if line.strip() == '---':
             para = doc.add_paragraph('─' * 80)
             for run in para.runs:
                 run.font.color.rgb = RGBColor(200, 200, 200)
             i += 1
-            consecutive_blanks = 0
             continue
         
         # Handle headings
@@ -487,17 +465,14 @@ def parse_markdown_to_docx(markdown_text, title, font_size, use_colors, preserve
             para.style = 'Intense Quote'
             extract_and_format_text(text, para, font_size, preserve_math)
         
-        # Handle regular paragraphs
+        # Handle regular paragraphs (only if not empty)
         elif line.strip():
             if in_list:
                 in_list = False
             para = doc.add_paragraph()
             extract_and_format_text(line, para, font_size, preserve_math)
         
-        # Handle empty lines
-        else:
-            if not (remove_extra_spaces and consecutive_blanks > max_blanks):
-                doc.add_paragraph()
+        # Skip empty lines (don't add extra paragraphs)
         
         i += 1
     
@@ -510,17 +485,14 @@ markdown_input = st.text_area(
     "Markdown Content",
     value=st.session_state['markdown_content'],
     height=400,
-    help="Paste markdown content from ChatGPT, Claude, or any AI website",
-    key="markdown_input"
+    help="Paste markdown content from ChatGPT, Claude, or any AI website"
 )
 
-# Auto-detect changes
-if markdown_input != st.session_state['markdown_content']:
-    st.session_state['markdown_content'] = markdown_input
-    st.session_state['needs_regeneration'] = True
+# Update session state
+st.session_state['markdown_content'] = markdown_input
 
-# Auto-generate document when content changes
-if st.session_state.get('needs_regeneration', False):
+# Process and Download button
+if st.button("🔄 Process & Download", type="primary", use_container_width=True):
     with st.spinner("🔄 Processing your markdown..."):
         try:
             doc = parse_markdown_to_docx(
@@ -528,53 +500,46 @@ if st.session_state.get('needs_regeneration', False):
                 doc_title,
                 font_size,
                 use_colors,
-                preserve_math,
-                remove_extra_spaces,
-                max_consecutive_blanks
+                preserve_math
             )
             
             bio = BytesIO()
             doc.save(bio)
             bio.seek(0)
             
-            st.session_state['generated_doc'] = bio.getvalue()
-            st.session_state['needs_regeneration'] = False
-            st.success("✅ Document ready for download!")
+            st.success("✅ Document generated successfully!")
+            
+            st.download_button(
+                label="⬇️ Download Word Document",
+                data=bio.getvalue(),
+                file_name=f"{doc_title.replace(' ', '_')}.docx",
+                mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                type="primary",
+                use_container_width=True
+            )
             
         except Exception as e:
             st.error(f"❌ Error: {str(e)}")
-            st.session_state['generated_doc'] = None
-
-# Show download button if document is ready
-if st.session_state['generated_doc'] is not None:
-    st.download_button(
-        label="⬇️ Download Word Document",
-        data=st.session_state['generated_doc'],
-        file_name=f"{doc_title.replace(' ', '_')}.docx",
-        mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-        type="primary",
-        use_container_width=True
-    )
 
 # Footer
 st.divider()
 st.markdown("""
 ### 💡 Features:
-- ✅ **Auto-processing**: Document generates as you type/paste
-- ✅ **LaTeX to Unicode**: `\( \alpha \)` → **α** (in green)
+- ✅ **LaTeX to Unicode**: `\\( \\alpha \\)` → **α** (in green)
 - ✅ **Tables**: Full support with borders
 - ✅ **Lists**: Bullet and numbered
 - ✅ **Code blocks**: Syntax highlighting style
 - ✅ **Bold/Italic**: `**bold**` and `*italic*`
+- ✅ **Minimal spacing**: No extra blank lines
 - ✅ **GitHub import**: Fetch from repositories
 """)
 
 with st.expander("📖 Quick Guide"):
     st.markdown("""
     **How to Use:**
-    1. Paste your markdown → Document auto-generates
-    2. Click Download button to save
-    3. Adjust settings in sidebar if needed
+    1. Paste your markdown content
+    2. Click "Process & Download" button
+    3. Click "Download Word Document" button
     
     **Supported Markdown:**
     - Headings: `# H1`, `## H2`, `### H3`
