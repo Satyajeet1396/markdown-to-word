@@ -140,6 +140,70 @@ with tab3:
         
         return {'headers': headers, 'rows': rows}, idx
     
+    def convert_latex_to_unicode(latex_text):
+        """Convert common LaTeX symbols to Unicode characters"""
+        replacements = {
+            # Greek letters (lowercase)
+            r'\alpha': 'α', r'\beta': 'β', r'\gamma': 'γ', r'\delta': 'δ',
+            r'\epsilon': 'ε', r'\zeta': 'ζ', r'\eta': 'η', r'\theta': 'θ',
+            r'\iota': 'ι', r'\kappa': 'κ', r'\lambda': 'λ', r'\mu': 'μ',
+            r'\nu': 'ν', r'\xi': 'ξ', r'\pi': 'π', r'\rho': 'ρ',
+            r'\sigma': 'σ', r'\tau': 'τ', r'\upsilon': 'υ', r'\phi': 'φ',
+            r'\chi': 'χ', r'\psi': 'ψ', r'\omega': 'ω',
+            # Greek letters (uppercase)
+            r'\Alpha': 'Α', r'\Beta': 'Β', r'\Gamma': 'Γ', r'\Delta': 'Δ',
+            r'\Epsilon': 'Ε', r'\Zeta': 'Ζ', r'\Eta': 'Η', r'\Theta': 'Θ',
+            r'\Iota': 'Ι', r'\Kappa': 'Κ', r'\Lambda': 'Λ', r'\Mu': 'Μ',
+            r'\Nu': 'Ν', r'\Xi': 'Ξ', r'\Pi': 'Π', r'\Rho': 'Ρ',
+            r'\Sigma': 'Σ', r'\Tau': 'Τ', r'\Upsilon': 'Υ', r'\Phi': 'Φ',
+            r'\Chi': 'Χ', r'\Psi': 'Ψ', r'\Omega': 'Ω',
+            # Math operators
+            r'\times': '×', r'\div': '÷', r'\pm': '±', r'\mp': '∓',
+            r'\cdot': '·', r'\ast': '∗', r'\star': '⋆',
+            # Relations
+            r'\leq': '≤', r'\geq': '≥', r'\neq': '≠', r'\approx': '≈',
+            r'\equiv': '≡', r'\sim': '∼', r'\propto': '∝',
+            r'\ll': '≪', r'\gg': '≫',
+            # Arrows
+            r'\rightarrow': '→', r'\leftarrow': '←', r'\leftrightarrow': '↔',
+            r'\Rightarrow': '⇒', r'\Leftarrow': '⇐', r'\Leftrightarrow': '⇔',
+            r'\uparrow': '↑', r'\downarrow': '↓',
+            # Sets
+            r'\in': '∈', r'\notin': '∉', r'\subset': '⊂', r'\supset': '⊃',
+            r'\cup': '∪', r'\cap': '∩', r'\emptyset': '∅',
+            r'\infty': '∞', r'\forall': '∀', r'\exists': '∃',
+            # Calculus
+            r'\int': '∫', r'\sum': '∑', r'\prod': '∏',
+            r'\partial': '∂', r'\nabla': '∇',
+            # Other symbols
+            r'\hbar': 'ℏ', r'\ell': 'ℓ',
+            r'\sqrt': '√', r'\angle': '∠', r'\degree': '°',
+            # Parentheses and brackets
+            r'\left': '', r'\right': '',
+            r'\{': '{', r'\}': '}',
+        }
+        
+        result = latex_text
+        for latex, unicode_char in replacements.items():
+            result = result.replace(latex, unicode_char)
+        
+        # Handle fractions \frac{a}{b} -> a/b
+        frac_pattern = r'\\frac\{([^}]+)\}\{([^}]+)\}'
+        result = re.sub(frac_pattern, r'(\1)/(\2)', result)
+        
+        # Handle superscripts x^2 or x^{10}
+        result = re.sub(r'\^(\d)', lambda m: chr(0x2070 + int(m.group(1))) if int(m.group(1)) < 10 else '^' + m.group(1), result)
+        result = re.sub(r'\^\{(\d+)\}', lambda m: ''.join(chr(0x2070 + int(d)) if int(d) < 10 else d for d in m.group(1)), result)
+        
+        # Handle subscripts x_1 or x_{10}
+        result = re.sub(r'_(\d)', lambda m: chr(0x2080 + int(m.group(1))) if int(m.group(1)) < 10 else '_' + m.group(1), result)
+        result = re.sub(r'_\{(\d+)\}', lambda m: ''.join(chr(0x2080 + int(d)) if int(d) < 10 else d for d in m.group(1)), result)
+        
+        # Handle hat/bar accents
+        result = result.replace(r'\hat{', '').replace(r'\bar{', '')
+        
+        return result
+    
     def extract_and_format_text(text, paragraph, font_size, preserve_math, debug=False):
         """Extract and format text with inline styles including LaTeX math"""
         
@@ -163,11 +227,13 @@ with tab3:
                 end = text.find('\\]', i + 2)
                 if end != -1:
                     math_content = text[i+2:end].strip()
+                    # Convert LaTeX to Unicode
+                    unicode_math = convert_latex_to_unicode(math_content)
                     if debug:
-                        st.write(f"Found display math: {math_content}")
-                    run = paragraph.add_run(math_content)
+                        st.write(f"Found display math: {math_content} → {unicode_math}")
+                    run = paragraph.add_run('\n' + unicode_math + '\n')
                     run.font.name = 'Cambria Math'
-                    run.font.size = Pt(font_size)
+                    run.font.size = Pt(font_size + 1)
                     run.font.color.rgb = RGBColor(0, 120, 0)
                     run.bold = True
                     i = end + 2
@@ -183,9 +249,11 @@ with tab3:
                 end = text.find('\\)', i + 2)
                 if end != -1:
                     math_content = text[i+2:end].strip()
+                    # Convert LaTeX to Unicode
+                    unicode_math = convert_latex_to_unicode(math_content)
                     if debug:
-                        st.write(f"Found inline math: {math_content}")
-                    run = paragraph.add_run(' ' + math_content + ' ')
+                        st.write(f"Found inline math: {math_content} → {unicode_math}")
+                    run = paragraph.add_run(' ' + unicode_math + ' ')
                     run.font.name = 'Cambria Math'
                     run.font.size = Pt(font_size)
                     run.font.color.rgb = RGBColor(0, 120, 0)
@@ -444,10 +512,11 @@ st.divider()
 st.markdown("""
 ### 💡 Tips:
 - Paste markdown directly from ChatGPT, Claude, Gemini, or any AI website
-- **LaTeX math will appear in GREEN BOLD text** in the Word document
-- Math format: `\\( alpha \\)` for inline, `\\[ equation \\]` for display
-- Supports headings, lists, bold, italic, code blocks, and tables
-- Enable "Show debug info" in sidebar to troubleshoot math rendering
+- **LaTeX math will be converted to Unicode symbols** (α, β, →, ∫, etc.) and appear in **GREEN BOLD**
+- Math format: `\( \alpha \)` for inline → displays as green **α**
+- Display math: `\[ E = mc^2 \]` → displays as green equation
+- Supports Greek letters, operators, arrows, calculus symbols, and more
+- Enable "Show debug info" to see LaTeX → Unicode conversion
 """)
 
 # Instructions section
