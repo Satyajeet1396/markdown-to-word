@@ -142,13 +142,29 @@ with tab3:
     
     def convert_latex_to_unicode(latex_text):
         """Convert common LaTeX symbols to Unicode characters"""
+        # First, remove LaTeX formatting commands
+        result = latex_text
+        
+        # Remove common LaTeX commands that don't affect display
+        result = result.replace(r'\text{', '').replace(r'\mathrm{', '').replace(r'\mathbf{', '')
+        result = result.replace(r'\hat{', '').replace(r'\bar{', '').replace(r'\tilde{', '')
+        result = result.replace(r'\boxed{', '').replace(r'\left', '').replace(r'\right', '')
+        result = result.replace(r'\begin{aligned}', '').replace(r'\end{aligned}', '')
+        result = result.replace(r'\,', ' ').replace(r'\;', ' ').replace(r'\:', ' ')
+        result = result.replace(r'\quad', '  ').replace(r'\qquad', '    ')
+        
+        # Remove extra closing braces
+        while result.count('}') > result.count('{'):
+            result = result.replace('}', '', 1)
+        
         replacements = {
             # Greek letters (lowercase)
             r'\alpha': 'α', r'\beta': 'β', r'\gamma': 'γ', r'\delta': 'δ',
-            r'\epsilon': 'ε', r'\zeta': 'ζ', r'\eta': 'η', r'\theta': 'θ',
-            r'\iota': 'ι', r'\kappa': 'κ', r'\lambda': 'λ', r'\mu': 'μ',
-            r'\nu': 'ν', r'\xi': 'ξ', r'\pi': 'π', r'\rho': 'ρ',
-            r'\sigma': 'σ', r'\tau': 'τ', r'\upsilon': 'υ', r'\phi': 'φ',
+            r'\epsilon': 'ε', r'\varepsilon': 'ε', r'\zeta': 'ζ', r'\eta': 'η', 
+            r'\theta': 'θ', r'\vartheta': 'θ', r'\iota': 'ι', r'\kappa': 'κ', 
+            r'\lambda': 'λ', r'\mu': 'μ', r'\nu': 'ν', r'\xi': 'ξ', 
+            r'\pi': 'π', r'\rho': 'ρ', r'\sigma': 'σ', r'\varsigma': 'ς',
+            r'\tau': 'τ', r'\upsilon': 'υ', r'\phi': 'φ', r'\varphi': 'φ',
             r'\chi': 'χ', r'\psi': 'ψ', r'\omega': 'ω',
             # Greek letters (uppercase)
             r'\Alpha': 'Α', r'\Beta': 'Β', r'\Gamma': 'Γ', r'\Delta': 'Δ',
@@ -161,48 +177,82 @@ with tab3:
             r'\times': '×', r'\div': '÷', r'\pm': '±', r'\mp': '∓',
             r'\cdot': '·', r'\ast': '∗', r'\star': '⋆',
             # Relations
-            r'\leq': '≤', r'\geq': '≥', r'\neq': '≠', r'\approx': '≈',
-            r'\equiv': '≡', r'\sim': '∼', r'\propto': '∝',
-            r'\ll': '≪', r'\gg': '≫',
+            r'\leq': '≤', r'\geq': '≥', r'\neq': '≠', r'\ne': '≠',
+            r'\approx': '≈', r'\equiv': '≡', r'\sim': '∼', r'\simeq': '≃',
+            r'\propto': '∝', r'\ll': '≪', r'\gg': '≫',
             # Arrows
-            r'\rightarrow': '→', r'\leftarrow': '←', r'\leftrightarrow': '↔',
-            r'\Rightarrow': '⇒', r'\Leftarrow': '⇐', r'\Leftrightarrow': '⇔',
+            r'\rightarrow': '→', r'\to': '→', r'\leftarrow': '←', 
+            r'\leftrightarrow': '↔', r'\Rightarrow': '⇒', 
+            r'\Leftarrow': '⇐', r'\Leftrightarrow': '⇔',
             r'\uparrow': '↑', r'\downarrow': '↓',
             # Sets
-            r'\in': '∈', r'\notin': '∉', r'\subset': '⊂', r'\supset': '⊃',
-            r'\cup': '∪', r'\cap': '∩', r'\emptyset': '∅',
+            r'\in': '∈', r'\notin': '∉', r'\ni': '∋',
+            r'\subset': '⊂', r'\supset': '⊃', r'\subseteq': '⊆', r'\supseteq': '⊇',
+            r'\cup': '∪', r'\cap': '∩', r'\emptyset': '∅', r'\varnothing': '∅',
             r'\infty': '∞', r'\forall': '∀', r'\exists': '∃',
             # Calculus
-            r'\int': '∫', r'\sum': '∑', r'\prod': '∏',
+            r'\int': '∫', r'\iint': '∬', r'\iiint': '∭', r'\oint': '∮',
+            r'\sum': '∑', r'\prod': '∏',
             r'\partial': '∂', r'\nabla': '∇',
             # Other symbols
-            r'\hbar': 'ℏ', r'\ell': 'ℓ',
+            r'\hbar': 'ℏ', r'\ell': 'ℓ', r'\wp': '℘',
+            r'\Re': 'ℜ', r'\Im': 'ℑ',
+            r'\aleph': 'ℵ', r'\beth': 'ℶ',
             r'\sqrt': '√', r'\angle': '∠', r'\degree': '°',
-            # Parentheses and brackets
-            r'\left': '', r'\right': '',
+            r'\circ': '∘', r'\bullet': '•',
+            r'\langle': '⟨', r'\rangle': '⟩',
+            # Special brackets
             r'\{': '{', r'\}': '}',
         }
         
-        result = latex_text
         for latex, unicode_char in replacements.items():
             result = result.replace(latex, unicode_char)
         
-        # Handle fractions \frac{a}{b} -> a/b
+        # Handle sqrt with braces: \sqrt{2} -> √2
+        result = re.sub(r'√\{([^}]+)\}', r'√(\1)', result)
+        
+        # Handle fractions \frac{a}{b} -> (a)/(b)
         frac_pattern = r'\\frac\{([^}]+)\}\{([^}]+)\}'
         result = re.sub(frac_pattern, r'(\1)/(\2)', result)
         
-        # Handle superscripts x^2 or x^{10}
-        result = re.sub(r'\^(\d)', lambda m: chr(0x2070 + int(m.group(1))) if int(m.group(1)) < 10 else '^' + m.group(1), result)
-        result = re.sub(r'\^\{(\d+)\}', lambda m: ''.join(chr(0x2070 + int(d)) if int(d) < 10 else d for d in m.group(1)), result)
+        # Handle superscripts with braces: x^{2} -> x²
+        def convert_superscript(match):
+            text = match.group(1)
+            superscript_map = {
+                '0': '⁰', '1': '¹', '2': '²', '3': '³', '4': '⁴',
+                '5': '⁵', '6': '⁶', '7': '⁷', '8': '⁸', '9': '⁹',
+                '+': '⁺', '-': '⁻', '=': '⁼', '(': '⁽', ')': '⁾',
+                'n': 'ⁿ', 'i': 'ⁱ'
+            }
+            return ''.join(superscript_map.get(c, c) for c in text)
         
-        # Handle subscripts x_1 or x_{10}
-        result = re.sub(r'_(\d)', lambda m: chr(0x2080 + int(m.group(1))) if int(m.group(1)) < 10 else '_' + m.group(1), result)
-        result = re.sub(r'_\{(\d+)\}', lambda m: ''.join(chr(0x2080 + int(d)) if int(d) < 10 else d for d in m.group(1)), result)
+        result = re.sub(r'\^\{([^}]+)\}', convert_superscript, result)
+        result = re.sub(r'\^(\d)', convert_superscript, result)
         
-        # Handle hat/bar accents
-        result = result.replace(r'\hat{', '').replace(r'\bar{', '')
+        # Handle subscripts with braces: x_{1} -> x₁
+        def convert_subscript(match):
+            text = match.group(1)
+            subscript_map = {
+                '0': '₀', '1': '₁', '2': '₂', '3': '₃', '4': '₄',
+                '5': '₅', '6': '₆', '7': '₇', '8': '₈', '9': '₉',
+                '+': '₊', '-': '₋', '=': '₌', '(': '₍', ')': '₎',
+                'a': 'ₐ', 'e': 'ₑ', 'o': 'ₒ', 'x': 'ₓ', 'h': 'ₕ',
+                'k': 'ₖ', 'l': 'ₗ', 'm': 'ₘ', 'n': 'ₙ', 'p': 'ₚ',
+                's': 'ₛ', 't': 'ₜ'
+            }
+            return ''.join(subscript_map.get(c, c) for c in text)
         
-        return result
+        result = re.sub(r'_\{([^}]+)\}', convert_subscript, result)
+        result = re.sub(r'_(\d)', convert_subscript, result)
+        
+        # Clean up remaining single braces
+        result = result.replace('{', '').replace('}', '')
+        
+        # Clean up backslashes for commands we might have missed
+        result = re.sub(r'\\[a-zA-Z]+', '', result)
+        result = result.replace('\\', '')
+        
+        return result.strip()
     
     def extract_and_format_text(text, paragraph, font_size, preserve_math, debug=False):
         """Extract and format text with inline styles including LaTeX math"""
