@@ -7,7 +7,6 @@ from docx.enum.text import WD_PARAGRAPH_ALIGNMENT
 from docx.oxml.ns import qn
 from docx.oxml import OxmlElement
 import re
-import base64
 
 # Page configuration
 st.set_page_config(
@@ -56,7 +55,8 @@ with st.sidebar:
     # Style options
     st.subheader("Styling Options")
     use_colors = st.checkbox("Use colored headings", value=True)
-    preserve_math = st.checkbox("Preserve LaTeX math", value=True)
+    preserve_math = st.checkbox("Preserve LaTeX math (as green text)", value=True)
+    show_debug = st.checkbox("Show debug info", value=False)
 
 # Main content area with tabs
 tab1, tab2, tab3 = st.tabs(["📝 Input Markdown", "👁️ Preview", "⬇️ Download"])
@@ -71,23 +71,12 @@ with tab1:
 ## Introduction
 This is a **sample** markdown document with *formatting*.
 
-### Features
-- Bullet point 1
-- Bullet point 2
-- Bullet point 3
-
-### Code Example
-```python
-def hello_world():
-    print("Hello, World!")
-```
-
-### Math Example
-This is inline math: \\( E = mc^2 \\)
+### Math Examples
+Inline math: \\( \\alpha \\) and \\( \\beta \\)
 
 Display math:
 \\[
-\\int_0^\\infty e^{-x^2} dx = \\frac{\\sqrt{\\pi}}{2}
+S = \\alpha + \\beta
 \\]
 """
     
@@ -151,7 +140,126 @@ with tab3:
         
         return {'headers': headers, 'rows': rows}, idx
     
-    def parse_markdown_to_docx(markdown_text, title, font_size, use_colors, preserve_math):
+    def extract_and_format_text(text, paragraph, font_size, preserve_math, debug=False):
+        """Extract and format text with inline styles including LaTeX math"""
+        
+        if debug:
+            st.write(f"Processing: {text[:100]}...")
+        
+        # Process text character by character to handle nested patterns
+        i = 0
+        current_text = ""
+        
+        while i < len(text):
+            # Check for display math \\[ ... \\]
+            if preserve_math and i + 1 < len(text) and text[i:i+2] == '\\[':
+                # Add any accumulated text
+                if current_text:
+                    run = paragraph.add_run(current_text)
+                    run.font.size = Pt(font_size)
+                    current_text = ""
+                
+                # Find closing \\]
+                end = text.find('\\]', i + 2)
+                if end != -1:
+                    math_content = text[i+2:end].strip()
+                    if debug:
+                        st.write(f"Found display math: {math_content}")
+                    run = paragraph.add_run('\n' + math_content + '\n')
+                    run.font.name = 'Cambria Math'
+                    run.font.size = Pt(font_size)
+                    run.font.color.rgb = RGBColor(0, 120, 0)
+                    run.bold = True
+                    i = end + 2
+                    continue
+            
+            # Check for inline math \\( ... \\)
+            elif preserve_math and i + 1 < len(text) and text[i:i+2] == '\\(':
+                # Add any accumulated text
+                if current_text:
+                    run = paragraph.add_run(current_text)
+                    run.font.size = Pt(font_size)
+                    current_text = ""
+                
+                # Find closing \\)
+                end = text.find('\\)', i + 2)
+                if end != -1:
+                    math_content = text[i+2:end].strip()
+                    if debug:
+                        st.write(f"Found inline math: {math_content}")
+                    run = paragraph.add_run(' ' + math_content + ' ')
+                    run.font.name = 'Cambria Math'
+                    run.font.size = Pt(font_size)
+                    run.font.color.rgb = RGBColor(0, 120, 0)
+                    run.bold = True
+                    i = end + 2
+                    continue
+            
+            # Check for bold **text**
+            elif i + 1 < len(text) and text[i:i+2] == '**':
+                # Add any accumulated text
+                if current_text:
+                    run = paragraph.add_run(current_text)
+                    run.font.size = Pt(font_size)
+                    current_text = ""
+                
+                # Find closing **
+                end = text.find('**', i + 2)
+                if end != -1:
+                    bold_text = text[i+2:end]
+                    run = paragraph.add_run(bold_text)
+                    run.bold = True
+                    run.font.size = Pt(font_size)
+                    i = end + 2
+                    continue
+            
+            # Check for italic *text* (but not **)
+            elif text[i] == '*' and (i == 0 or text[i-1] != '*') and (i + 1 >= len(text) or text[i+1] != '*'):
+                # Add any accumulated text
+                if current_text:
+                    run = paragraph.add_run(current_text)
+                    run.font.size = Pt(font_size)
+                    current_text = ""
+                
+                # Find closing *
+                end = text.find('*', i + 1)
+                if end != -1 and (end + 1 >= len(text) or text[end+1] != '*'):
+                    italic_text = text[i+1:end]
+                    run = paragraph.add_run(italic_text)
+                    run.italic = True
+                    run.font.size = Pt(font_size)
+                    i = end + 1
+                    continue
+            
+            # Check for code `text`
+            elif text[i] == '`':
+                # Add any accumulated text
+                if current_text:
+                    run = paragraph.add_run(current_text)
+                    run.font.size = Pt(font_size)
+                    current_text = ""
+                
+                # Find closing `
+                end = text.find('`', i + 1)
+                if end != -1:
+                    code_text = text[i+1:end]
+                    run = paragraph.add_run(code_text)
+                    run.font.name = 'Courier New'
+                    run.font.size = Pt(font_size - 1)
+                    run.font.color.rgb = RGBColor(220, 50, 50)
+                    i = end + 1
+                    continue
+            
+            # Regular character
+            current_text += text[i]
+            i += 1
+        
+        # Add any remaining text
+        if current_text:
+            run = paragraph.add_run(current_text)
+            run.font.size = Pt(font_size)
+    
+    def parse_markdown_to_docx(markdown_text, title, font_size, use_colors, preserve_math, debug=False):
         """Convert markdown to Word document with formatting"""
         doc = Document()
         
@@ -173,7 +281,7 @@ with tab3:
                 table_data, end_idx = parse_table(lines, i)
                 if table_data:
                     # Add table to document
-                    doc.add_paragraph()  # Space before table
+                    doc.add_paragraph()
                     table = doc.add_table(rows=1 + len(table_data['rows']), cols=len(table_data['headers']))
                     table.style = 'Light Grid Accent 1'
                     add_table_border(table)
@@ -182,8 +290,8 @@ with tab3:
                     hdr_cells = table.rows[0].cells
                     for idx, header in enumerate(table_data['headers']):
                         hdr_cells[idx].text = header
-                        for paragraph in hdr_cells[idx].paragraphs:
-                            for run in paragraph.runs:
+                        for p in hdr_cells[idx].paragraphs:
+                            for run in p.runs:
                                 run.font.bold = True
                                 run.font.size = Pt(font_size)
                     
@@ -193,18 +301,17 @@ with tab3:
                         for col_idx, cell_data in enumerate(row_data):
                             if col_idx < len(row_cells):
                                 row_cells[col_idx].text = cell_data
-                                for paragraph in row_cells[col_idx].paragraphs:
-                                    for run in paragraph.runs:
+                                for p in row_cells[col_idx].paragraphs:
+                                    for run in p.runs:
                                         run.font.size = Pt(font_size - 1)
                     
-                    doc.add_paragraph()  # Space after table
+                    doc.add_paragraph()
                     i = end_idx
                     continue
             
             # Handle code blocks
             if line.strip().startswith('```'):
                 if in_code_block:
-                    # End code block
                     code_text = '\n'.join(code_lines)
                     para = doc.add_paragraph(code_text)
                     para.style = 'Intense Quote'
@@ -214,7 +321,6 @@ with tab3:
                     code_lines = []
                     in_code_block = False
                 else:
-                    # Start code block
                     in_code_block = True
                 i += 1
                 continue
@@ -232,17 +338,25 @@ with tab3:
             
             # Handle headings
             if line.startswith('# ') and not line.startswith('## '):
-                para = doc.add_heading(line[2:], 1)
+                heading_text = line[2:]
+                para = doc.add_heading('', 1)
+                extract_and_format_text(heading_text, para, font_size + 2, preserve_math, debug)
                 if use_colors:
                     for run in para.runs:
                         run.font.color.rgb = RGBColor(0, 51, 102)
+            
             elif line.startswith('## ') and not line.startswith('### '):
-                para = doc.add_heading(line[3:], 2)
+                heading_text = line[3:]
+                para = doc.add_heading('', 2)
+                extract_and_format_text(heading_text, para, font_size + 1, preserve_math, debug)
                 if use_colors:
                     for run in para.runs:
                         run.font.color.rgb = RGBColor(51, 102, 153)
+            
             elif line.startswith('### '):
-                para = doc.add_heading(line[4:], 3)
+                heading_text = line[4:]
+                para = doc.add_heading('', 3)
+                extract_and_format_text(heading_text, para, font_size, preserve_math, debug)
                 if use_colors:
                     for run in para.runs:
                         run.font.color.rgb = RGBColor(102, 153, 204)
@@ -250,24 +364,24 @@ with tab3:
             # Handle bullet lists
             elif line.strip().startswith('- ') or line.strip().startswith('* '):
                 text = line.strip()[2:]
-                para = doc.add_paragraph(text, style='List Bullet')
-                apply_inline_formatting(para, font_size, preserve_math)
+                para = doc.add_paragraph(style='List Bullet')
+                extract_and_format_text(text, para, font_size, preserve_math, debug)
                 in_list = True
             
             # Handle numbered lists
             elif re.match(r'^\d+\.\s', line.strip()):
                 text = re.sub(r'^\d+\.\s', '', line.strip())
-                para = doc.add_paragraph(text, style='List Number')
-                apply_inline_formatting(para, font_size, preserve_math)
+                para = doc.add_paragraph(style='List Number')
+                extract_and_format_text(text, para, font_size, preserve_math, debug)
                 in_list = True
             
             # Handle regular paragraphs
             elif line.strip():
                 if in_list:
-                    doc.add_paragraph()  # Add space after list
+                    doc.add_paragraph()
                     in_list = False
-                para = doc.add_paragraph(line)
-                apply_inline_formatting(para, font_size, preserve_math)
+                para = doc.add_paragraph()
+                extract_and_format_text(line, para, font_size, preserve_math, debug)
             
             # Handle empty lines
             else:
@@ -278,43 +392,6 @@ with tab3:
         
         return doc
     
-    def apply_inline_formatting(paragraph, font_size, preserve_math):
-        """Apply bold, italic, code, and math formatting to paragraph text"""
-        text = paragraph.text
-        paragraph.clear()
-        
-        # Pattern to match all variations:
-        # \[...\] or \\[...\\] - display math
-        # \(...\) or \\(...\\) - inline math
-        # $...$ - alternative inline math
-        # **bold**, *italic*, `code`
-        if preserve_math:
-            pattern = r'(\\\\\[[\s\S]*?\\\\\]|\\\[[\s\S]*?\\\]|\\\\\(.*?\\\\\)|\\\(.*?\\\)|\$\$.*?\$\$|\$.*?\$|\*\*.*?\*\*|\*(?!\*).*?\*(?!\*)|`.*?`)'
-        else:
-            pattern = r'(\*\*.*?\*\*|\*(?!\*).*?\*(?!\*)|`.*?`)'
-        
-        parts = re.split(pattern, text)
-        
-        for part in parts:
-            if not part:
-                continue
-            
-            # Display math \[...\] or \\[...\\]
-            if preserve_math and ((part.startswith('\\[') and part.endswith('\\]')) or 
-                                 (part.startswith('\\\\[') and part.endswith('\\\\]')) or
-                                 (part.startswith('$') and part.endswith('$'))):
-                # Clean up the delimiters
-                clean_math = part.replace('\\\\[', '').replace('\\\\]', '').replace('\\[', '').replace('\\]', '').replace('$', '')
-                run = paragraph.add_run('\n' + clean_math + '\n')
-                run.font.name = 'Cambria Math'
-                run.font.size = Pt(font_size)
-                run.font.color.rgb = RGBColor(0, 100, 0)
-            
-            # Inline math \(...\) or \\(...\\) or $...$
-            elif preserve_math and ((part.startswith('\\(') and part.endswith('\\)')) or 
-                                   (part.startswith('\\\\(') and part.endswith('\\\\)')) or
-                                   (part.startswith('
-    
     if st.button("📄 Generate Word Document"):
         with st.spinner("Generating document..."):
             try:
@@ -324,7 +401,8 @@ with tab3:
                     doc_title,
                     font_size,
                     use_colors,
-                    preserve_math
+                    preserve_math,
+                    show_debug
                 )
                 
                 # Save to BytesIO
@@ -344,17 +422,18 @@ with tab3:
                 
             except Exception as e:
                 st.error(f"❌ Error generating document: {str(e)}")
-                st.error(f"Details: {type(e).__name__}")
+                import traceback
+                st.error(traceback.format_exc())
 
 # Footer
 st.divider()
 st.markdown("""
 ### 💡 Tips:
 - Paste markdown directly from ChatGPT, Claude, Gemini, or any AI website
-- Use GitHub URLs to fetch markdown files from repositories
-- Supports headings, lists, bold, italic, code blocks, **LaTeX math**, and **tables**
-- Customize font size and styling options in the sidebar
-- LaTeX math expressions will be preserved in the document
+- **LaTeX math will appear in GREEN BOLD text** in the Word document
+- Math format: `\\( alpha \\)` for inline, `\\[ equation \\]` for display
+- Supports headings, lists, bold, italic, code blocks, and tables
+- Enable "Show debug info" in sidebar to troubleshoot math rendering
 """)
 
 # Instructions section
@@ -366,274 +445,16 @@ with st.expander("📖 How to Use"):
     3. Click "Update Content"
     4. Go to "Download" tab and click "Generate Word Document"
     
-    **Method 2: GitHub Import**
-    1. Copy the GitHub URL of a markdown file
-    2. Paste it in the sidebar under "GitHub File URL"
-    3. Click "Fetch from GitHub"
-    4. Go to "Download" tab and generate the document
+    **LaTeX Math Notation:**
+    - Inline: `\\( \\alpha \\)` or `\\( x^2 \\)`
+    - Display: `\\[ E = mc^2 \\]`
+    - Math appears as **green bold text** in Word
     
     **Supported Features:**
     - Headings (# ## ###)
     - Bold (**text**) and Italic (*text*)
-    - Code blocks (```code```)
-    - Inline code (`code`)
+    - Code blocks and inline code
     - Bullet and numbered lists
-    - Tables (| header | header |)
-    - LaTeX math (all formats):
-      - Inline: \\( x \\) or $x$
-      - Display: \\[ equation \\] or $equation$
-    - Horizontal rules (---)
-    
-    **GitHub URL Format:**
-    - `https://github.com/username/repository/blob/main/file.md`
-    - The app will automatically convert it to the raw URL
-    """)
-) and part.endswith('
-    
-    if st.button("📄 Generate Word Document"):
-        with st.spinner("Generating document..."):
-            try:
-                # Generate the document
-                doc = parse_markdown_to_docx(
-                    st.session_state['markdown_content'],
-                    doc_title,
-                    font_size,
-                    use_colors,
-                    preserve_math
-                )
-                
-                # Save to BytesIO
-                bio = BytesIO()
-                doc.save(bio)
-                bio.seek(0)
-                
-                st.success("✅ Document generated successfully!")
-                
-                # Download button
-                st.download_button(
-                    label="⬇️ Download Word Document",
-                    data=bio,
-                    file_name=f"{doc_title.replace(' ', '_')}.docx",
-                    mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-                )
-                
-            except Exception as e:
-                st.error(f"❌ Error generating document: {str(e)}")
-                st.error(f"Details: {type(e).__name__}")
-
-# Footer
-st.divider()
-st.markdown("""
-### 💡 Tips:
-- Paste markdown directly from ChatGPT, Claude, Gemini, or any AI website
-- Use GitHub URLs to fetch markdown files from repositories
-- Supports headings, lists, bold, italic, code blocks, **LaTeX math**, and **tables**
-- Customize font size and styling options in the sidebar
-- LaTeX math expressions will be preserved in the document
-""")
-
-# Instructions section
-with st.expander("📖 How to Use"):
-    st.markdown("""
-    **Method 1: Direct Paste**
-    1. Copy markdown content from any AI website (ChatGPT, Claude, etc.)
-    2. Paste it into the "Input Markdown" tab
-    3. Click "Update Content"
-    4. Go to "Download" tab and click "Generate Word Document"
-    
-    **Method 2: GitHub Import**
-    1. Copy the GitHub URL of a markdown file
-    2. Paste it in the sidebar under "GitHub File URL"
-    3. Click "Fetch from GitHub"
-    4. Go to "Download" tab and generate the document
-    
-    **Supported Features:**
-    - Headings (# ## ###)
-    - Bold (**text**) and Italic (*text*)
-    - Code blocks (```code```)
-    - Inline code (`code`)
-    - Bullet and numbered lists
-    - Tables (| header | header |)
-    - LaTeX math: \\( inline \\) and \\[ display \\]
-    - Horizontal rules (---)
-    
-    **GitHub URL Format:**
-    - `https://github.com/username/repository/blob/main/file.md`
-    - The app will automatically convert it to the raw URL
-    """)
-) and not part.startswith('$'))):
-                # Clean up the delimiters
-                clean_math = part.replace('\\\\(', '').replace('\\\\)', '').replace('\\(', '').replace('\\)', '').replace('
-    
-    if st.button("📄 Generate Word Document"):
-        with st.spinner("Generating document..."):
-            try:
-                # Generate the document
-                doc = parse_markdown_to_docx(
-                    st.session_state['markdown_content'],
-                    doc_title,
-                    font_size,
-                    use_colors,
-                    preserve_math
-                )
-                
-                # Save to BytesIO
-                bio = BytesIO()
-                doc.save(bio)
-                bio.seek(0)
-                
-                st.success("✅ Document generated successfully!")
-                
-                # Download button
-                st.download_button(
-                    label="⬇️ Download Word Document",
-                    data=bio,
-                    file_name=f"{doc_title.replace(' ', '_')}.docx",
-                    mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-                )
-                
-            except Exception as e:
-                st.error(f"❌ Error generating document: {str(e)}")
-                st.error(f"Details: {type(e).__name__}")
-
-# Footer
-st.divider()
-st.markdown("""
-### 💡 Tips:
-- Paste markdown directly from ChatGPT, Claude, Gemini, or any AI website
-- Use GitHub URLs to fetch markdown files from repositories
-- Supports headings, lists, bold, italic, code blocks, **LaTeX math**, and **tables**
-- Customize font size and styling options in the sidebar
-- LaTeX math expressions will be preserved in the document
-""")
-
-# Instructions section
-with st.expander("📖 How to Use"):
-    st.markdown("""
-    **Method 1: Direct Paste**
-    1. Copy markdown content from any AI website (ChatGPT, Claude, etc.)
-    2. Paste it into the "Input Markdown" tab
-    3. Click "Update Content"
-    4. Go to "Download" tab and click "Generate Word Document"
-    
-    **Method 2: GitHub Import**
-    1. Copy the GitHub URL of a markdown file
-    2. Paste it in the sidebar under "GitHub File URL"
-    3. Click "Fetch from GitHub"
-    4. Go to "Download" tab and generate the document
-    
-    **Supported Features:**
-    - Headings (# ## ###)
-    - Bold (**text**) and Italic (*text*)
-    - Code blocks (```code```)
-    - Inline code (`code`)
-    - Bullet and numbered lists
-    - Tables (| header | header |)
-    - LaTeX math: \\( inline \\) and \\[ display \\]
-    - Horizontal rules (---)
-    
-    **GitHub URL Format:**
-    - `https://github.com/username/repository/blob/main/file.md`
-    - The app will automatically convert it to the raw URL
-    """)
-, '')
-                run = paragraph.add_run(clean_math)
-                run.font.name = 'Cambria Math'
-                run.font.size = Pt(font_size)
-                run.font.color.rgb = RGBColor(0, 100, 0)
-            
-            # Bold **text**
-            elif part.startswith('**') and part.endswith('**') and len(part) > 4:
-                run = paragraph.add_run(part[2:-2])
-                run.bold = True
-                run.font.size = Pt(font_size)
-            
-            # Italic *text*
-            elif part.startswith('*') and part.endswith('*') and len(part) > 2 and not part.startswith('**'):
-                run = paragraph.add_run(part[1:-1])
-                run.italic = True
-                run.font.size = Pt(font_size)
-            
-            # Code `text`
-            elif part.startswith('`') and part.endswith('`'):
-                run = paragraph.add_run(part[1:-1])
-                run.font.name = 'Courier New'
-                run.font.size = Pt(font_size - 1)
-                run.font.color.rgb = RGBColor(220, 50, 50)
-            
-            # Regular text
-            else:
-                run = paragraph.add_run(part)
-                run.font.size = Pt(font_size)
-    
-    if st.button("📄 Generate Word Document"):
-        with st.spinner("Generating document..."):
-            try:
-                # Generate the document
-                doc = parse_markdown_to_docx(
-                    st.session_state['markdown_content'],
-                    doc_title,
-                    font_size,
-                    use_colors,
-                    preserve_math
-                )
-                
-                # Save to BytesIO
-                bio = BytesIO()
-                doc.save(bio)
-                bio.seek(0)
-                
-                st.success("✅ Document generated successfully!")
-                
-                # Download button
-                st.download_button(
-                    label="⬇️ Download Word Document",
-                    data=bio,
-                    file_name=f"{doc_title.replace(' ', '_')}.docx",
-                    mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-                )
-                
-            except Exception as e:
-                st.error(f"❌ Error generating document: {str(e)}")
-                st.error(f"Details: {type(e).__name__}")
-
-# Footer
-st.divider()
-st.markdown("""
-### 💡 Tips:
-- Paste markdown directly from ChatGPT, Claude, Gemini, or any AI website
-- Use GitHub URLs to fetch markdown files from repositories
-- Supports headings, lists, bold, italic, code blocks, **LaTeX math**, and **tables**
-- Customize font size and styling options in the sidebar
-- LaTeX math expressions will be preserved in the document
-""")
-
-# Instructions section
-with st.expander("📖 How to Use"):
-    st.markdown("""
-    **Method 1: Direct Paste**
-    1. Copy markdown content from any AI website (ChatGPT, Claude, etc.)
-    2. Paste it into the "Input Markdown" tab
-    3. Click "Update Content"
-    4. Go to "Download" tab and click "Generate Word Document"
-    
-    **Method 2: GitHub Import**
-    1. Copy the GitHub URL of a markdown file
-    2. Paste it in the sidebar under "GitHub File URL"
-    3. Click "Fetch from GitHub"
-    4. Go to "Download" tab and generate the document
-    
-    **Supported Features:**
-    - Headings (# ## ###)
-    - Bold (**text**) and Italic (*text*)
-    - Code blocks (```code```)
-    - Inline code (`code`)
-    - Bullet and numbered lists
-    - Tables (| header | header |)
-    - LaTeX math: \\( inline \\) and \\[ display \\]
-    - Horizontal rules (---)
-    
-    **GitHub URL Format:**
-    - `https://github.com/username/repository/blob/main/file.md`
-    - The app will automatically convert it to the raw URL
+    - Tables
+    - LaTeX math expressions
     """)
