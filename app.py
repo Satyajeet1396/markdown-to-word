@@ -151,49 +151,53 @@ with tab3:
         current_text = ""
         
         while i < len(text):
-            # Check for display math \\[ ... \\]
-            if preserve_math and i + 1 < len(text) and text[i:i+2] == '\\[':
-                # Add any accumulated text
-                if current_text:
-                    run = paragraph.add_run(current_text)
-                    run.font.size = Pt(font_size)
-                    current_text = ""
-                
-                # Find closing \\]
-                end = text.find('\\]', i + 2)
-                if end != -1:
-                    math_content = text[i+2:end].strip()
-                    if debug:
-                        st.write(f"Found display math: {math_content}")
-                    run = paragraph.add_run('\n' + math_content + '\n')
-                    run.font.name = 'Cambria Math'
-                    run.font.size = Pt(font_size)
-                    run.font.color.rgb = RGBColor(0, 120, 0)
-                    run.bold = True
-                    i = end + 2
-                    continue
+            # Check for display math \[ ... \] or \\[ ... \\]
+            if preserve_math and i < len(text):
+                # Check for single backslash \[
+                if text[i:i+2] == '\\[':
+                    # Add any accumulated text
+                    if current_text:
+                        run = paragraph.add_run(current_text)
+                        run.font.size = Pt(font_size)
+                        current_text = ""
+                    
+                    # Find closing \]
+                    end = text.find('\\]', i + 2)
+                    if end != -1:
+                        math_content = text[i+2:end].strip()
+                        if debug:
+                            st.write(f"Found display math (single \\): {math_content}")
+                        run = paragraph.add_run(math_content)
+                        run.font.name = 'Cambria Math'
+                        run.font.size = Pt(font_size)
+                        run.font.color.rgb = RGBColor(0, 120, 0)
+                        run.bold = True
+                        i = end + 2
+                        continue
             
-            # Check for inline math \\( ... \\)
-            elif preserve_math and i + 1 < len(text) and text[i:i+2] == '\\(':
-                # Add any accumulated text
-                if current_text:
-                    run = paragraph.add_run(current_text)
-                    run.font.size = Pt(font_size)
-                    current_text = ""
-                
-                # Find closing \\)
-                end = text.find('\\)', i + 2)
-                if end != -1:
-                    math_content = text[i+2:end].strip()
-                    if debug:
-                        st.write(f"Found inline math: {math_content}")
-                    run = paragraph.add_run(' ' + math_content + ' ')
-                    run.font.name = 'Cambria Math'
-                    run.font.size = Pt(font_size)
-                    run.font.color.rgb = RGBColor(0, 120, 0)
-                    run.bold = True
-                    i = end + 2
-                    continue
+            # Check for inline math \( ... \) or \\( ... \\)
+            if preserve_math and i < len(text):
+                # Check for single backslash \(
+                if text[i:i+2] == '\\(':
+                    # Add any accumulated text
+                    if current_text:
+                        run = paragraph.add_run(current_text)
+                        run.font.size = Pt(font_size)
+                        current_text = ""
+                    
+                    # Find closing \)
+                    end = text.find('\\)', i + 2)
+                    if end != -1:
+                        math_content = text[i+2:end].strip()
+                        if debug:
+                            st.write(f"Found inline math (single \\): {math_content}")
+                        run = paragraph.add_run(' ' + math_content + ' ')
+                        run.font.name = 'Cambria Math'
+                        run.font.size = Pt(font_size)
+                        run.font.color.rgb = RGBColor(0, 120, 0)
+                        run.bold = True
+                        i = end + 2
+                        continue
             
             # Check for bold **text**
             elif i + 1 < len(text) and text[i:i+2] == '**':
@@ -266,6 +270,20 @@ with tab3:
         # Add title
         title_para = doc.add_heading(title, 0)
         title_para.alignment = WD_PARAGRAPH_ALIGNMENT.CENTER
+        
+        # Pre-process: handle multi-line display math
+        if preserve_math:
+            # Find all \[ ... \] blocks (including multi-line)
+            display_math_pattern = r'\\\[(.*?)\\\]'
+            matches = list(re.finditer(display_math_pattern, markdown_text, re.DOTALL))
+            
+            # Replace multi-line display math with single line placeholders
+            for match in reversed(matches):  # Reverse to maintain positions
+                full_match = match.group(0)
+                math_content = match.group(1).strip()
+                # Replace newlines with spaces in math
+                single_line = full_match.replace('\n', ' ')
+                markdown_text = markdown_text[:match.start()] + single_line + markdown_text[match.end():]
         
         lines = markdown_text.split('\n')
         in_code_block = False
