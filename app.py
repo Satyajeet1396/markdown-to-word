@@ -283,9 +283,13 @@ with tab3:
         text = paragraph.text
         paragraph.clear()
         
-        # Pattern to match **bold**, *italic*, `code`, \(...\) inline math, and \[...\] display math
+        # Pattern to match all variations:
+        # \[...\] or \\[...\\] - display math
+        # \(...\) or \\(...\\) - inline math
+        # $...$ - alternative inline math
+        # **bold**, *italic*, `code`
         if preserve_math:
-            pattern = r'(\\\[[\s\S]*?\\\]|\\\(.*?\\\)|\*\*.*?\*\*|\*(?!\*).*?\*(?!\*)|`.*?`)'
+            pattern = r'(\\\\\[[\s\S]*?\\\\\]|\\\[[\s\S]*?\\\]|\\\\\(.*?\\\\\)|\\\(.*?\\\)|\$\$.*?\$\$|\$.*?\$|\*\*.*?\*\*|\*(?!\*).*?\*(?!\*)|`.*?`)'
         else:
             pattern = r'(\*\*.*?\*\*|\*(?!\*).*?\*(?!\*)|`.*?`)'
         
@@ -294,35 +298,269 @@ with tab3:
         for part in parts:
             if not part:
                 continue
+            
+            # Display math \[...\] or \\[...\\]
+            if preserve_math and ((part.startswith('\\[') and part.endswith('\\]')) or 
+                                 (part.startswith('\\\\[') and part.endswith('\\\\]')) or
+                                 (part.startswith('$') and part.endswith('$'))):
+                # Clean up the delimiters
+                clean_math = part.replace('\\\\[', '').replace('\\\\]', '').replace('\\[', '').replace('\\]', '').replace('$', '')
+                run = paragraph.add_run('\n' + clean_math + '\n')
+                run.font.name = 'Cambria Math'
+                run.font.size = Pt(font_size)
+                run.font.color.rgb = RGBColor(0, 100, 0)
+            
+            # Inline math \(...\) or \\(...\\) or $...$
+            elif preserve_math and ((part.startswith('\\(') and part.endswith('\\)')) or 
+                                   (part.startswith('\\\\(') and part.endswith('\\\\)')) or
+                                   (part.startswith('
+    
+    if st.button("📄 Generate Word Document"):
+        with st.spinner("Generating document..."):
+            try:
+                # Generate the document
+                doc = parse_markdown_to_docx(
+                    st.session_state['markdown_content'],
+                    doc_title,
+                    font_size,
+                    use_colors,
+                    preserve_math
+                )
                 
-            # Display math \[...\]
-            if preserve_math and part.startswith('\\[') and part.endswith('\\]'):
-                run = paragraph.add_run('\n' + part + '\n')
+                # Save to BytesIO
+                bio = BytesIO()
+                doc.save(bio)
+                bio.seek(0)
+                
+                st.success("✅ Document generated successfully!")
+                
+                # Download button
+                st.download_button(
+                    label="⬇️ Download Word Document",
+                    data=bio,
+                    file_name=f"{doc_title.replace(' ', '_')}.docx",
+                    mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                )
+                
+            except Exception as e:
+                st.error(f"❌ Error generating document: {str(e)}")
+                st.error(f"Details: {type(e).__name__}")
+
+# Footer
+st.divider()
+st.markdown("""
+### 💡 Tips:
+- Paste markdown directly from ChatGPT, Claude, Gemini, or any AI website
+- Use GitHub URLs to fetch markdown files from repositories
+- Supports headings, lists, bold, italic, code blocks, **LaTeX math**, and **tables**
+- Customize font size and styling options in the sidebar
+- LaTeX math expressions will be preserved in the document
+""")
+
+# Instructions section
+with st.expander("📖 How to Use"):
+    st.markdown("""
+    **Method 1: Direct Paste**
+    1. Copy markdown content from any AI website (ChatGPT, Claude, etc.)
+    2. Paste it into the "Input Markdown" tab
+    3. Click "Update Content"
+    4. Go to "Download" tab and click "Generate Word Document"
+    
+    **Method 2: GitHub Import**
+    1. Copy the GitHub URL of a markdown file
+    2. Paste it in the sidebar under "GitHub File URL"
+    3. Click "Fetch from GitHub"
+    4. Go to "Download" tab and generate the document
+    
+    **Supported Features:**
+    - Headings (# ## ###)
+    - Bold (**text**) and Italic (*text*)
+    - Code blocks (```code```)
+    - Inline code (`code`)
+    - Bullet and numbered lists
+    - Tables (| header | header |)
+    - LaTeX math (all formats):
+      - Inline: \\( x \\) or $x$
+      - Display: \\[ equation \\] or $equation$
+    - Horizontal rules (---)
+    
+    **GitHub URL Format:**
+    - `https://github.com/username/repository/blob/main/file.md`
+    - The app will automatically convert it to the raw URL
+    """)
+) and part.endswith('
+    
+    if st.button("📄 Generate Word Document"):
+        with st.spinner("Generating document..."):
+            try:
+                # Generate the document
+                doc = parse_markdown_to_docx(
+                    st.session_state['markdown_content'],
+                    doc_title,
+                    font_size,
+                    use_colors,
+                    preserve_math
+                )
+                
+                # Save to BytesIO
+                bio = BytesIO()
+                doc.save(bio)
+                bio.seek(0)
+                
+                st.success("✅ Document generated successfully!")
+                
+                # Download button
+                st.download_button(
+                    label="⬇️ Download Word Document",
+                    data=bio,
+                    file_name=f"{doc_title.replace(' ', '_')}.docx",
+                    mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                )
+                
+            except Exception as e:
+                st.error(f"❌ Error generating document: {str(e)}")
+                st.error(f"Details: {type(e).__name__}")
+
+# Footer
+st.divider()
+st.markdown("""
+### 💡 Tips:
+- Paste markdown directly from ChatGPT, Claude, Gemini, or any AI website
+- Use GitHub URLs to fetch markdown files from repositories
+- Supports headings, lists, bold, italic, code blocks, **LaTeX math**, and **tables**
+- Customize font size and styling options in the sidebar
+- LaTeX math expressions will be preserved in the document
+""")
+
+# Instructions section
+with st.expander("📖 How to Use"):
+    st.markdown("""
+    **Method 1: Direct Paste**
+    1. Copy markdown content from any AI website (ChatGPT, Claude, etc.)
+    2. Paste it into the "Input Markdown" tab
+    3. Click "Update Content"
+    4. Go to "Download" tab and click "Generate Word Document"
+    
+    **Method 2: GitHub Import**
+    1. Copy the GitHub URL of a markdown file
+    2. Paste it in the sidebar under "GitHub File URL"
+    3. Click "Fetch from GitHub"
+    4. Go to "Download" tab and generate the document
+    
+    **Supported Features:**
+    - Headings (# ## ###)
+    - Bold (**text**) and Italic (*text*)
+    - Code blocks (```code```)
+    - Inline code (`code`)
+    - Bullet and numbered lists
+    - Tables (| header | header |)
+    - LaTeX math: \\( inline \\) and \\[ display \\]
+    - Horizontal rules (---)
+    
+    **GitHub URL Format:**
+    - `https://github.com/username/repository/blob/main/file.md`
+    - The app will automatically convert it to the raw URL
+    """)
+) and not part.startswith('$'))):
+                # Clean up the delimiters
+                clean_math = part.replace('\\\\(', '').replace('\\\\)', '').replace('\\(', '').replace('\\)', '').replace('
+    
+    if st.button("📄 Generate Word Document"):
+        with st.spinner("Generating document..."):
+            try:
+                # Generate the document
+                doc = parse_markdown_to_docx(
+                    st.session_state['markdown_content'],
+                    doc_title,
+                    font_size,
+                    use_colors,
+                    preserve_math
+                )
+                
+                # Save to BytesIO
+                bio = BytesIO()
+                doc.save(bio)
+                bio.seek(0)
+                
+                st.success("✅ Document generated successfully!")
+                
+                # Download button
+                st.download_button(
+                    label="⬇️ Download Word Document",
+                    data=bio,
+                    file_name=f"{doc_title.replace(' ', '_')}.docx",
+                    mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                )
+                
+            except Exception as e:
+                st.error(f"❌ Error generating document: {str(e)}")
+                st.error(f"Details: {type(e).__name__}")
+
+# Footer
+st.divider()
+st.markdown("""
+### 💡 Tips:
+- Paste markdown directly from ChatGPT, Claude, Gemini, or any AI website
+- Use GitHub URLs to fetch markdown files from repositories
+- Supports headings, lists, bold, italic, code blocks, **LaTeX math**, and **tables**
+- Customize font size and styling options in the sidebar
+- LaTeX math expressions will be preserved in the document
+""")
+
+# Instructions section
+with st.expander("📖 How to Use"):
+    st.markdown("""
+    **Method 1: Direct Paste**
+    1. Copy markdown content from any AI website (ChatGPT, Claude, etc.)
+    2. Paste it into the "Input Markdown" tab
+    3. Click "Update Content"
+    4. Go to "Download" tab and click "Generate Word Document"
+    
+    **Method 2: GitHub Import**
+    1. Copy the GitHub URL of a markdown file
+    2. Paste it in the sidebar under "GitHub File URL"
+    3. Click "Fetch from GitHub"
+    4. Go to "Download" tab and generate the document
+    
+    **Supported Features:**
+    - Headings (# ## ###)
+    - Bold (**text**) and Italic (*text*)
+    - Code blocks (```code```)
+    - Inline code (`code`)
+    - Bullet and numbered lists
+    - Tables (| header | header |)
+    - LaTeX math: \\( inline \\) and \\[ display \\]
+    - Horizontal rules (---)
+    
+    **GitHub URL Format:**
+    - `https://github.com/username/repository/blob/main/file.md`
+    - The app will automatically convert it to the raw URL
+    """)
+, '')
+                run = paragraph.add_run(clean_math)
                 run.font.name = 'Cambria Math'
                 run.font.size = Pt(font_size)
                 run.font.color.rgb = RGBColor(0, 100, 0)
-            # Inline math \(...\)
-            elif preserve_math and part.startswith('\\(') and part.endswith('\\)'):
-                run = paragraph.add_run(part)
-                run.font.name = 'Cambria Math'
-                run.font.size = Pt(font_size)
-                run.font.color.rgb = RGBColor(0, 100, 0)
+            
             # Bold **text**
             elif part.startswith('**') and part.endswith('**') and len(part) > 4:
                 run = paragraph.add_run(part[2:-2])
                 run.bold = True
                 run.font.size = Pt(font_size)
+            
             # Italic *text*
             elif part.startswith('*') and part.endswith('*') and len(part) > 2 and not part.startswith('**'):
                 run = paragraph.add_run(part[1:-1])
                 run.italic = True
                 run.font.size = Pt(font_size)
+            
             # Code `text`
             elif part.startswith('`') and part.endswith('`'):
                 run = paragraph.add_run(part[1:-1])
                 run.font.name = 'Courier New'
                 run.font.size = Pt(font_size - 1)
                 run.font.color.rgb = RGBColor(220, 50, 50)
+            
             # Regular text
             else:
                 run = paragraph.add_run(part)
