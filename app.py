@@ -34,7 +34,6 @@ with st.sidebar:
     if st.button("📥 Fetch from GitHub"):
         if github_url:
             try:
-                # Convert GitHub URL to raw URL
                 raw_url = github_url.replace("github.com", "raw.githubusercontent.com").replace("/blob/", "/")
                 response = requests.get(raw_url)
                 response.raise_for_status()
@@ -55,8 +54,13 @@ with st.sidebar:
     # Style options
     st.subheader("Styling Options")
     use_colors = st.checkbox("Use colored headings", value=True)
-    preserve_math = st.checkbox("Preserve LaTeX math (as green text)", value=True)
+    preserve_math = st.checkbox("Convert LaTeX to Unicode", value=True)
     show_debug = st.checkbox("Show debug info", value=False)
+    
+    # Spacing options
+    st.subheader("Spacing Options")
+    remove_extra_spaces = st.checkbox("Remove extra blank lines", value=True)
+    max_consecutive_blanks = st.slider("Max consecutive blank lines", 0, 3, 1)
 
 # Main content area with tabs
 tab1, tab2, tab3 = st.tabs(["📝 Input Markdown", "👁️ Preview", "⬇️ Download"])
@@ -64,7 +68,6 @@ tab1, tab2, tab3 = st.tabs(["📝 Input Markdown", "👁️ Preview", "⬇️ Do
 with tab1:
     st.subheader("Paste or Edit Your Markdown Content")
     
-    # Initialize session state for markdown content
     if 'markdown_content' not in st.session_state:
         st.session_state['markdown_content'] = """# Sample Markdown
 
@@ -142,7 +145,6 @@ with tab3:
     
     def convert_latex_to_unicode(latex_text):
         """Convert common LaTeX symbols to Unicode characters"""
-        # First, remove LaTeX formatting commands
         result = latex_text
         
         # Remove common LaTeX commands that don't affect display
@@ -152,10 +154,6 @@ with tab3:
         result = result.replace(r'\begin{aligned}', '').replace(r'\end{aligned}', '')
         result = result.replace(r'\,', ' ').replace(r'\;', ' ').replace(r'\:', ' ')
         result = result.replace(r'\quad', '  ').replace(r'\qquad', '    ')
-        
-        # Remove extra closing braces
-        while result.count('}') > result.count('{'):
-            result = result.replace('}', '', 1)
         
         replacements = {
             # Greek letters (lowercase)
@@ -167,12 +165,9 @@ with tab3:
             r'\tau': 'τ', r'\upsilon': 'υ', r'\phi': 'φ', r'\varphi': 'φ',
             r'\chi': 'χ', r'\psi': 'ψ', r'\omega': 'ω',
             # Greek letters (uppercase)
-            r'\Alpha': 'Α', r'\Beta': 'Β', r'\Gamma': 'Γ', r'\Delta': 'Δ',
-            r'\Epsilon': 'Ε', r'\Zeta': 'Ζ', r'\Eta': 'Η', r'\Theta': 'Θ',
-            r'\Iota': 'Ι', r'\Kappa': 'Κ', r'\Lambda': 'Λ', r'\Mu': 'Μ',
-            r'\Nu': 'Ν', r'\Xi': 'Ξ', r'\Pi': 'Π', r'\Rho': 'Ρ',
-            r'\Sigma': 'Σ', r'\Tau': 'Τ', r'\Upsilon': 'Υ', r'\Phi': 'Φ',
-            r'\Chi': 'Χ', r'\Psi': 'Ψ', r'\Omega': 'Ω',
+            r'\Gamma': 'Γ', r'\Delta': 'Δ', r'\Theta': 'Θ', r'\Lambda': 'Λ',
+            r'\Xi': 'Ξ', r'\Pi': 'Π', r'\Sigma': 'Σ', r'\Upsilon': 'Υ',
+            r'\Phi': 'Φ', r'\Psi': 'Ψ', r'\Omega': 'Ω',
             # Math operators
             r'\times': '×', r'\div': '÷', r'\pm': '±', r'\mp': '∓',
             r'\cdot': '·', r'\ast': '∗', r'\star': '⋆',
@@ -196,19 +191,17 @@ with tab3:
             r'\partial': '∂', r'\nabla': '∇',
             # Other symbols
             r'\hbar': 'ℏ', r'\ell': 'ℓ', r'\wp': '℘',
-            r'\Re': 'ℜ', r'\Im': 'ℑ',
-            r'\aleph': 'ℵ', r'\beth': 'ℶ',
+            r'\Re': 'ℜ', r'\Im': 'ℑ', r'\aleph': 'ℵ', r'\beth': 'ℶ',
             r'\sqrt': '√', r'\angle': '∠', r'\degree': '°',
             r'\circ': '∘', r'\bullet': '•',
             r'\langle': '⟨', r'\rangle': '⟩',
-            # Special brackets
             r'\{': '{', r'\}': '}',
         }
         
         for latex, unicode_char in replacements.items():
             result = result.replace(latex, unicode_char)
         
-        # Handle sqrt with braces: \sqrt{2} -> √2
+        # Handle sqrt with braces: \sqrt{2} -> √(2)
         result = re.sub(r'√\{([^}]+)\}', r'√(\1)', result)
         
         # Handle fractions \frac{a}{b} -> (a)/(b)
@@ -243,9 +236,9 @@ with tab3:
             return ''.join(subscript_map.get(c, c) for c in text)
         
         result = re.sub(r'_\{([^}]+)\}', convert_subscript, result)
-        result = re.sub(r'_(\d)', convert_subscript, result)
+        result = re.sub(r'_([a-zA-Z0-9])', convert_subscript, result)
         
-        # Clean up remaining single braces
+        # Clean up remaining braces
         result = result.replace('{', '').replace('}', '')
         
         # Clean up backslashes for commands we might have missed
@@ -260,7 +253,6 @@ with tab3:
         if debug:
             st.write(f"Processing: {text[:100]}...")
         
-        # Process text character by character to handle all patterns
         i = 0
         current_text = ""
         
@@ -277,11 +269,10 @@ with tab3:
                 end = text.find('\\]', i + 2)
                 if end != -1:
                     math_content = text[i+2:end].strip()
-                    # Convert LaTeX to Unicode
                     unicode_math = convert_latex_to_unicode(math_content)
                     if debug:
-                        st.write(f"Found display math: {math_content} → {unicode_math}")
-                    run = paragraph.add_run('\n' + unicode_math + '\n')
+                        st.write(f"Display math: {math_content} → {unicode_math}")
+                    run = paragraph.add_run(unicode_math)
                     run.font.name = 'Cambria Math'
                     run.font.size = Pt(font_size + 1)
                     run.font.color.rgb = RGBColor(0, 120, 0)
@@ -299,10 +290,9 @@ with tab3:
                 end = text.find('\\)', i + 2)
                 if end != -1:
                     math_content = text[i+2:end].strip()
-                    # Convert LaTeX to Unicode
                     unicode_math = convert_latex_to_unicode(math_content)
                     if debug:
-                        st.write(f"Found inline math: {math_content} → {unicode_math}")
+                        st.write(f"Inline math: {math_content} → {unicode_math}")
                     run = paragraph.add_run(' ' + unicode_math + ' ')
                     run.font.name = 'Cambria Math'
                     run.font.size = Pt(font_size)
@@ -327,21 +317,19 @@ with tab3:
                     i = end + 2
                     processed = True
             
-            # Check for italic *text* (single asterisk, not part of **)
+            # Check for italic *text*
             if not processed and text[i] == '*':
-                # Make sure it's not part of **
                 if (i == 0 or text[i-1] != '*') and (i + 1 >= len(text) or text[i+1] != '*'):
                     if current_text:
                         run = paragraph.add_run(current_text)
                         run.font.size = Pt(font_size)
                         current_text = ""
                     
-                    # Find next single *
                     end = i + 1
                     while end < len(text):
                         if text[end] == '*' and (end + 1 >= len(text) or text[end+1] != '*') and (end == 0 or text[end-1] != '*'):
                             italic_text = text[i+1:end]
-                            if italic_text:  # Only if there's content
+                            if italic_text:
                                 run = paragraph.add_run(italic_text)
                                 run.italic = True
                                 run.font.size = Pt(font_size)
@@ -367,17 +355,15 @@ with tab3:
                     i = end + 1
                     processed = True
             
-            # If nothing was processed, add character to current_text
             if not processed:
                 current_text += text[i]
                 i += 1
         
-        # Add any remaining text
         if current_text:
             run = paragraph.add_run(current_text)
             run.font.size = Pt(font_size)
     
-    def parse_markdown_to_docx(markdown_text, title, font_size, use_colors, preserve_math, debug=False):
+    def parse_markdown_to_docx(markdown_text, title, font_size, use_colors, preserve_math, debug, remove_extra_spaces, max_blanks):
         """Convert markdown to Word document with formatting"""
         doc = Document()
         
@@ -387,15 +373,10 @@ with tab3:
         
         # Pre-process: handle multi-line display math
         if preserve_math:
-            # Find all \[ ... \] blocks (including multi-line)
             display_math_pattern = r'\\\[(.*?)\\\]'
             matches = list(re.finditer(display_math_pattern, markdown_text, re.DOTALL))
-            
-            # Replace multi-line display math with single line placeholders
-            for match in reversed(matches):  # Reverse to maintain positions
+            for match in reversed(matches):
                 full_match = match.group(0)
-                math_content = match.group(1).strip()
-                # Replace newlines with spaces in math
                 single_line = full_match.replace('\n', ' ')
                 markdown_text = markdown_text[:match.start()] + single_line + markdown_text[match.end():]
         
@@ -403,17 +384,25 @@ with tab3:
         in_code_block = False
         code_lines = []
         in_list = False
+        consecutive_blanks = 0
         i = 0
         
         while i < len(lines):
             line = lines[i]
             
+            # Track consecutive blank lines
+            if not line.strip():
+                consecutive_blanks += 1
+                if remove_extra_spaces and consecutive_blanks > max_blanks:
+                    i += 1
+                    continue
+            else:
+                consecutive_blanks = 0
+            
             # Check for tables
-            if '|' in line and i + 1 < len(lines) and '|' in lines[i + 1]:
+            if '|' in line and i + 1 < len(lines) and '|' in lines[i + 1] and '---' in lines[i+1]:
                 table_data, end_idx = parse_table(lines, i)
                 if table_data:
-                    # Add table to document
-                    doc.add_paragraph()
                     table = doc.add_table(rows=1 + len(table_data['rows']), cols=len(table_data['headers']))
                     table.style = 'Light Grid Accent 1'
                     add_table_border(table)
@@ -421,6 +410,9 @@ with tab3:
                     # Add headers
                     hdr_cells = table.rows[0].cells
                     for idx, header in enumerate(table_data['headers']):
+                        # Process LaTeX in table headers
+                        if preserve_math and '\\(' in header:
+                            header = convert_latex_to_unicode(header.replace('\\(', '').replace('\\)', ''))
                         hdr_cells[idx].text = header
                         for p in hdr_cells[idx].paragraphs:
                             for run in p.runs:
@@ -432,13 +424,16 @@ with tab3:
                         row_cells = table.rows[row_idx + 1].cells
                         for col_idx, cell_data in enumerate(row_data):
                             if col_idx < len(row_cells):
+                                # Process LaTeX in table cells
+                                if preserve_math and '\\(' in cell_data:
+                                    cell_data = convert_latex_to_unicode(cell_data.replace('\\(', '').replace('\\)', ''))
                                 row_cells[col_idx].text = cell_data
                                 for p in row_cells[col_idx].paragraphs:
                                     for run in p.runs:
                                         run.font.size = Pt(font_size - 1)
                     
-                    doc.add_paragraph()
                     i = end_idx
+                    consecutive_blanks = 0
                     continue
             
             # Handle code blocks
@@ -464,8 +459,11 @@ with tab3:
             
             # Handle horizontal rules
             if line.strip() == '---':
-                doc.add_paragraph('_' * 50)
+                para = doc.add_paragraph('─' * 80)
+                for run in para.runs:
+                    run.font.color.rgb = RGBColor(200, 200, 200)
                 i += 1
+                consecutive_blanks = 0
                 continue
             
             # Handle headings
@@ -475,7 +473,8 @@ with tab3:
                 extract_and_format_text(heading_text, para, font_size + 2, preserve_math, debug)
                 if use_colors:
                     for run in para.runs:
-                        run.font.color.rgb = RGBColor(0, 51, 102)
+                        if not run.font.color.rgb:
+                            run.font.color.rgb = RGBColor(0, 51, 102)
             
             elif line.startswith('## ') and not line.startswith('### '):
                 heading_text = line[3:]
@@ -483,7 +482,8 @@ with tab3:
                 extract_and_format_text(heading_text, para, font_size + 1, preserve_math, debug)
                 if use_colors:
                     for run in para.runs:
-                        run.font.color.rgb = RGBColor(51, 102, 153)
+                        if not run.font.color.rgb:
+                            run.font.color.rgb = RGBColor(51, 102, 153)
             
             elif line.startswith('### '):
                 heading_text = line[4:]
@@ -491,7 +491,8 @@ with tab3:
                 extract_and_format_text(heading_text, para, font_size, preserve_math, debug)
                 if use_colors:
                     for run in para.runs:
-                        run.font.color.rgb = RGBColor(102, 153, 204)
+                        if not run.font.color.rgb:
+                            run.font.color.rgb = RGBColor(102, 153, 204)
             
             # Handle bullet lists
             elif line.strip().startswith('- ') or line.strip().startswith('* '):
@@ -507,17 +508,23 @@ with tab3:
                 extract_and_format_text(text, para, font_size, preserve_math, debug)
                 in_list = True
             
+            # Handle blockquotes
+            elif line.strip().startswith('>'):
+                text = line.strip()[1:].strip()
+                para = doc.add_paragraph()
+                para.style = 'Intense Quote'
+                extract_and_format_text(text, para, font_size, preserve_math, debug)
+            
             # Handle regular paragraphs
             elif line.strip():
                 if in_list:
-                    doc.add_paragraph()
                     in_list = False
                 para = doc.add_paragraph()
                 extract_and_format_text(line, para, font_size, preserve_math, debug)
             
             # Handle empty lines
             else:
-                if not in_list:
+                if not (remove_extra_spaces and consecutive_blanks > max_blanks):
                     doc.add_paragraph()
             
             i += 1
@@ -527,24 +534,23 @@ with tab3:
     if st.button("📄 Generate Word Document"):
         with st.spinner("Generating document..."):
             try:
-                # Generate the document
                 doc = parse_markdown_to_docx(
                     st.session_state['markdown_content'],
                     doc_title,
                     font_size,
                     use_colors,
                     preserve_math,
-                    show_debug
+                    show_debug,
+                    remove_extra_spaces,
+                    max_consecutive_blanks
                 )
                 
-                # Save to BytesIO
                 bio = BytesIO()
                 doc.save(bio)
                 bio.seek(0)
                 
                 st.success("✅ Document generated successfully!")
                 
-                # Download button
                 st.download_button(
                     label="⬇️ Download Word Document",
                     data=bio,
@@ -560,34 +566,38 @@ with tab3:
 # Footer
 st.divider()
 st.markdown("""
-### 💡 Tips:
-- Paste markdown directly from ChatGPT, Claude, Gemini, or any AI website
-- **LaTeX math will be converted to Unicode symbols** (α, β, →, ∫, etc.) and appear in **GREEN BOLD**
-- Math format: `\( \alpha \)` for inline → displays as green **α**
-- Display math: `\[ E = mc^2 \]` → displays as green equation
-- Supports Greek letters, operators, arrows, calculus symbols, and more
-- Enable "Show debug info" to see LaTeX → Unicode conversion
+### 💡 Features:
+- ✅ **LaTeX to Unicode**: Converts `\( \alpha \)` → **α** (in green)
+- ✅ **Tables**: Full markdown table support with borders
+- ✅ **Lists**: Bullet and numbered lists
+- ✅ **Code blocks**: Syntax highlighting style
+- ✅ **Blockquotes**: `> quote` formatting
+- ✅ **Bold/Italic**: `**bold**` and `*italic*`
+- ✅ **Headings**: All levels (H1, H2, H3)
+- ✅ **Horizontal rules**: `---` separator
+- ✅ **Space control**: Remove extra blank lines
+- ✅ **GitHub import**: Fetch from repository URLs
 """)
 
-# Instructions section
 with st.expander("📖 How to Use"):
     st.markdown("""
-    **Method 1: Direct Paste**
-    1. Copy markdown content from any AI website (ChatGPT, Claude, etc.)
-    2. Paste it into the "Input Markdown" tab
-    3. Click "Update Content"
-    4. Go to "Download" tab and click "Generate Word Document"
+    **Quick Start:**
+    1. Paste markdown from ChatGPT, Claude, or any AI
+    2. Click "Update Content"
+    3. Go to Download tab → Generate Word Document
     
-    **LaTeX Math Notation:**
-    - Inline: `\\( \\alpha \\)` or `\\( x^2 \\)`
-    - Display: `\\[ E = mc^2 \\]`
-    - Math appears as **green bold text** in Word
+    **Advanced Options (Sidebar):**
+    - Adjust font size and colors
+    - Control blank line spacing
+    - Enable debug mode for troubleshooting
     
-    **Supported Features:**
-    - Headings (# ## ###)
-    - Bold (**text**) and Italic (*text*)
-    - Code blocks and inline code
-    - Bullet and numbered lists
-    - Tables
-    - LaTeX math expressions
+    **Supported Markdown:**
+    - Headings: `# H1`, `## H2`, `### H3`
+    - Bold: `**text**`, Italic: `*text*`
+    - Code: `` `inline` `` or ` ```block``` `
+    - Lists: `- bullet` or `1. numbered`
+    - Tables: `| col1 | col2 |`
+    - Math: `\\( \\alpha \\)` → α
+    - Blockquotes: `> quote`
+    - Rules: `---`
     """)
