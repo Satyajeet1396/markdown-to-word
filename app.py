@@ -146,104 +146,99 @@ with tab3:
         if debug:
             st.write(f"Processing: {text[:100]}...")
         
-        # Process text character by character to handle nested patterns
+        # Process text character by character to handle all patterns
         i = 0
         current_text = ""
         
         while i < len(text):
-            # Check for display math \[ ... \] or \\[ ... \\]
-            if preserve_math and i < len(text):
-                # Check for single backslash \[
-                if text[i:i+2] == '\\[':
-                    # Add any accumulated text
-                    if current_text:
-                        run = paragraph.add_run(current_text)
-                        run.font.size = Pt(font_size)
-                        current_text = ""
-                    
-                    # Find closing \]
-                    end = text.find('\\]', i + 2)
-                    if end != -1:
-                        math_content = text[i+2:end].strip()
-                        if debug:
-                            st.write(f"Found display math (single \\): {math_content}")
-                        run = paragraph.add_run(math_content)
-                        run.font.name = 'Cambria Math'
-                        run.font.size = Pt(font_size)
-                        run.font.color.rgb = RGBColor(0, 120, 0)
-                        run.bold = True
-                        i = end + 2
-                        continue
+            processed = False
             
-            # Check for inline math \( ... \) or \\( ... \\)
-            if preserve_math and i < len(text):
-                # Check for single backslash \(
-                if text[i:i+2] == '\\(':
-                    # Add any accumulated text
-                    if current_text:
-                        run = paragraph.add_run(current_text)
-                        run.font.size = Pt(font_size)
-                        current_text = ""
-                    
-                    # Find closing \)
-                    end = text.find('\\)', i + 2)
-                    if end != -1:
-                        math_content = text[i+2:end].strip()
-                        if debug:
-                            st.write(f"Found inline math (single \\): {math_content}")
-                        run = paragraph.add_run(' ' + math_content + ' ')
-                        run.font.name = 'Cambria Math'
-                        run.font.size = Pt(font_size)
-                        run.font.color.rgb = RGBColor(0, 120, 0)
-                        run.bold = True
-                        i = end + 2
-                        continue
-            
-            # Check for bold **text**
-            elif i + 1 < len(text) and text[i:i+2] == '**':
-                # Add any accumulated text
+            # Check for display math \[ ... \]
+            if preserve_math and text[i:i+2] == '\\[':
                 if current_text:
                     run = paragraph.add_run(current_text)
                     run.font.size = Pt(font_size)
                     current_text = ""
                 
-                # Find closing **
-                end = text.find('**', i + 2)
+                end = text.find('\\]', i + 2)
                 if end != -1:
+                    math_content = text[i+2:end].strip()
+                    if debug:
+                        st.write(f"Found display math: {math_content}")
+                    run = paragraph.add_run(math_content)
+                    run.font.name = 'Cambria Math'
+                    run.font.size = Pt(font_size)
+                    run.font.color.rgb = RGBColor(0, 120, 0)
+                    run.bold = True
+                    i = end + 2
+                    processed = True
+            
+            # Check for inline math \( ... \)
+            if not processed and preserve_math and text[i:i+2] == '\\(':
+                if current_text:
+                    run = paragraph.add_run(current_text)
+                    run.font.size = Pt(font_size)
+                    current_text = ""
+                
+                end = text.find('\\)', i + 2)
+                if end != -1:
+                    math_content = text[i+2:end].strip()
+                    if debug:
+                        st.write(f"Found inline math: {math_content}")
+                    run = paragraph.add_run(' ' + math_content + ' ')
+                    run.font.name = 'Cambria Math'
+                    run.font.size = Pt(font_size)
+                    run.font.color.rgb = RGBColor(0, 120, 0)
+                    run.bold = True
+                    i = end + 2
+                    processed = True
+            
+            # Check for bold **text**
+            if not processed and text[i:i+2] == '**':
+                if current_text:
+                    run = paragraph.add_run(current_text)
+                    run.font.size = Pt(font_size)
+                    current_text = ""
+                
+                end = text.find('**', i + 2)
+                if end != -1 and end > i + 2:
                     bold_text = text[i+2:end]
                     run = paragraph.add_run(bold_text)
                     run.bold = True
                     run.font.size = Pt(font_size)
                     i = end + 2
-                    continue
+                    processed = True
             
-            # Check for italic *text* (but not **)
-            elif text[i] == '*' and (i == 0 or text[i-1] != '*') and (i + 1 >= len(text) or text[i+1] != '*'):
-                # Add any accumulated text
+            # Check for italic *text* (single asterisk, not part of **)
+            if not processed and text[i] == '*':
+                # Make sure it's not part of **
+                if (i == 0 or text[i-1] != '*') and (i + 1 >= len(text) or text[i+1] != '*'):
+                    if current_text:
+                        run = paragraph.add_run(current_text)
+                        run.font.size = Pt(font_size)
+                        current_text = ""
+                    
+                    # Find next single *
+                    end = i + 1
+                    while end < len(text):
+                        if text[end] == '*' and (end + 1 >= len(text) or text[end+1] != '*') and (end == 0 or text[end-1] != '*'):
+                            italic_text = text[i+1:end]
+                            if italic_text:  # Only if there's content
+                                run = paragraph.add_run(italic_text)
+                                run.italic = True
+                                run.font.size = Pt(font_size)
+                                i = end + 1
+                                processed = True
+                            break
+                        end += 1
+            
+            # Check for inline code `text`
+            if not processed and text[i] == '`':
                 if current_text:
                     run = paragraph.add_run(current_text)
                     run.font.size = Pt(font_size)
                     current_text = ""
                 
-                # Find closing *
-                end = text.find('*', i + 1)
-                if end != -1 and (end + 1 >= len(text) or text[end+1] != '*'):
-                    italic_text = text[i+1:end]
-                    run = paragraph.add_run(italic_text)
-                    run.italic = True
-                    run.font.size = Pt(font_size)
-                    i = end + 1
-                    continue
-            
-            # Check for code `text`
-            elif text[i] == '`':
-                # Add any accumulated text
-                if current_text:
-                    run = paragraph.add_run(current_text)
-                    run.font.size = Pt(font_size)
-                    current_text = ""
-                
-                # Find closing `
                 end = text.find('`', i + 1)
                 if end != -1:
                     code_text = text[i+1:end]
@@ -252,11 +247,12 @@ with tab3:
                     run.font.size = Pt(font_size - 1)
                     run.font.color.rgb = RGBColor(220, 50, 50)
                     i = end + 1
-                    continue
+                    processed = True
             
-            # Regular character
-            current_text += text[i]
-            i += 1
+            # If nothing was processed, add character to current_text
+            if not processed:
+                current_text += text[i]
+                i += 1
         
         # Add any remaining text
         if current_text:
