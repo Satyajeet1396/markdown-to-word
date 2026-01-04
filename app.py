@@ -7,9 +7,6 @@ from docx.enum.text import WD_PARAGRAPH_ALIGNMENT
 from docx.oxml.ns import qn
 from docx.oxml import OxmlElement
 import re
-import subprocess
-import tempfile
-import os
 
 # Page configuration
 st.set_page_config(
@@ -18,109 +15,51 @@ st.set_page_config(
     layout="wide"
 )
 
-# Title and description
 st.title("📄 Markdown to Word Converter")
-st.markdown("Convert markdown with **editable equations** (Pandoc) or **Unicode symbols** (python-docx)")
+st.markdown("✅ **Cloud-ready** - Works on Streamlit Cloud, Heroku, and all platforms!")
 
-# Check Pandoc availability
-def check_pandoc():
-    """Check if Pandoc is installed"""
-    try:
-        result = subprocess.run(['pandoc', '--version'], 
-                              capture_output=True, 
-                              text=True, 
-                              timeout=5)
-        return result.returncode == 0
-    except:
-        return False
-
-PANDOC_AVAILABLE = check_pandoc()
-
-# Sidebar for settings
+# Sidebar
 with st.sidebar:
     st.header("🔧 Settings")
     
-    # Conversion method
-    st.subheader("Conversion Method")
-    if PANDOC_AVAILABLE:
-        conversion_method = st.radio(
-            "Choose method:",
-            ["Pandoc (Editable Equations)", "Python-docx (Unicode)"],
-            help="Pandoc creates editable Word equations. Python-docx uses Unicode symbols."
-        )
-        use_pandoc = conversion_method.startswith("Pandoc")
-    else:
-        st.warning("⚠️ Pandoc not installed - using Python-docx method")
-        use_pandoc = False
-    
-    st.divider()
-    
-    # GitHub section
     st.subheader("GitHub Repository")
     github_url = st.text_input(
         "GitHub File URL",
-        placeholder="https://github.com/user/repo/blob/main/file.md",
-        help="Enter the GitHub URL of a markdown file"
+        placeholder="https://github.com/user/repo/blob/main/file.md"
     )
     
     if st.button("📥 Fetch from GitHub"):
         if github_url:
             try:
                 raw_url = github_url.replace("github.com", "raw.githubusercontent.com").replace("/blob/", "/")
-                response = requests.get(raw_url)
+                response = requests.get(raw_url, timeout=10)
                 response.raise_for_status()
                 st.session_state['markdown_content'] = response.text
-                st.success("✅ Successfully fetched from GitHub!")
+                st.success("✅ Fetched!")
+                st.rerun()
             except Exception as e:
-                st.error(f"❌ Error fetching from GitHub: {str(e)}")
+                st.error(f"❌ Error: {str(e)}")
         else:
-            st.warning("Please enter a GitHub URL")
+            st.warning("Enter a URL")
     
     st.divider()
     
-    # Document settings
     st.subheader("Document Settings")
-    doc_title = st.text_input("Document Title", value="Converted Document")
-    font_size = st.slider("Base Font Size", 8, 16, 11)
-    use_colors = st.checkbox("Use colored headings", value=True)
-    
-    if use_pandoc:
-        st.subheader("Pandoc Options")
-        use_toc = st.checkbox("Include Table of Contents", value=False)
-        number_sections = st.checkbox("Number sections", value=False)
+    doc_title = st.text_input("Title", value="Converted Document")
+    font_size = st.slider("Font Size", 8, 16, 11)
+    use_colors = st.checkbox("Colored headings", value=True)
     
     st.divider()
-    
-    # Platform info
-    st.info(f"""
-    **Platform Status:**
-    - Pandoc: {'✅ Installed' if PANDOC_AVAILABLE else '❌ Not Available'}
-    - Python-docx: ✅ Always Available
-    
-    **Deployment:**
-    - Streamlit Cloud: Use Python-docx
-    - GitHub Codespaces: Install Pandoc
-    - Local: Both methods work
-    """)
+    st.success("✅ Ready for Streamlit Cloud!")
 
-# Initialize session state
+# Initialize
 if 'markdown_content' not in st.session_state:
-    st.session_state['markdown_content'] = """# Sample Markdown
+    st.session_state['markdown_content'] = """# Sample Document
 
 ## Introduction
-This is a **sample** markdown document with *formatting*.
+This is a **sample** with *formatting*.
 
 ### Math Examples
-
-**For Pandoc:** Use `$...$` syntax
-Inline math: $\\alpha$ and $\\beta$
-
-Display math:
-$$
-S = \\alpha + \\beta
-$$
-
-**For Python-docx:** Use `\\(...\\)` syntax
 Inline: \\( \\alpha \\) and \\( \\beta \\)
 
 Display:
@@ -128,72 +67,22 @@ Display:
 E = mc^2
 \\]
 
-### Lists and Tables
-
-- Bullet point 1
-- Bullet point 2
+### Features
+- Bullet 1
+- Bullet 2
 
 | Column 1 | Column 2 |
 |----------|----------|
 | Data 1   | Data 2   |
 """
 
-# PANDOC CONVERSION FUNCTION
-def convert_with_pandoc(markdown_text, title, use_toc, number_sections):
-    """Convert markdown to Word using Pandoc"""
-    with tempfile.NamedTemporaryFile(mode='w', suffix='.md', delete=False, encoding='utf-8') as md_file:
-        yaml_header = f"""---
-title: "{title}"
----
-
-"""
-        md_file.write(yaml_header + markdown_text)
-        md_path = md_file.name
-    
-    output_path = tempfile.mktemp(suffix='.docx')
-    
-    try:
-        cmd = [
-            'pandoc',
-            md_path,
-            '-o', output_path,
-            '--from', 'markdown',
-            '--to', 'docx',
-            '--standalone'
-        ]
-        
-        if use_toc:
-            cmd.append('--toc')
-        if number_sections:
-            cmd.append('--number-sections')
-        
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
-        
-        if result.returncode != 0:
-            raise Exception(f"Pandoc error: {result.stderr}")
-        
-        with open(output_path, 'rb') as f:
-            docx_data = f.read()
-        
-        return docx_data
-        
-    finally:
-        try:
-            os.unlink(md_path)
-            if os.path.exists(output_path):
-                os.unlink(output_path)
-        except:
-            pass
-
-# PYTHON-DOCX CONVERSION FUNCTIONS
+# Helper functions
 def add_table_border(table):
-    """Add borders to table"""
     tbl = table._element
     tblPr = tbl.tblPr
     if tblPr is None:
         tblPr = OxmlElement('w:tblPr')
         tbl.insert(0, tblPr)
-    
     tblBorders = OxmlElement('w:tblBorders')
     for border_name in ['top', 'left', 'bottom', 'right', 'insideH', 'insideV']:
         border = OxmlElement(f'w:{border_name}')
@@ -205,30 +94,23 @@ def add_table_border(table):
     tblPr.append(tblBorders)
 
 def parse_table(lines, start_idx):
-    """Parse markdown table"""
     table_lines = []
     idx = start_idx
-    
     while idx < len(lines) and '|' in lines[idx]:
         table_lines.append(lines[idx])
         idx += 1
-    
     if len(table_lines) < 2:
         return None, start_idx
-    
     headers = [cell.strip() for cell in table_lines[0].split('|') if cell.strip()]
     rows = []
     for line in table_lines[2:]:
         cells = [cell.strip() for cell in line.split('|') if cell.strip()]
         if cells:
             rows.append(cells)
-    
     return {'headers': headers, 'rows': rows}, idx
 
 def convert_latex_to_unicode(latex_text):
-    """Convert LaTeX to Unicode"""
     result = latex_text
-    
     result = result.replace(r'\text{', '').replace(r'\mathrm{', '').replace(r'\mathbf{', '')
     result = result.replace(r'\hat{', '').replace(r'\bar{', '').replace(r'\tilde{', '')
     result = result.replace(r'\boxed{', '').replace(r'\left', '').replace(r'\right', '')
@@ -238,18 +120,15 @@ def convert_latex_to_unicode(latex_text):
     replacements = {
         r'\alpha': 'α', r'\beta': 'β', r'\gamma': 'γ', r'\delta': 'δ',
         r'\epsilon': 'ε', r'\theta': 'θ', r'\lambda': 'λ', r'\mu': 'μ',
-        r'\nu': 'ν', r'\pi': 'π', r'\rho': 'ρ', r'\sigma': 'σ',
+        r'\nu': 'ν', r'\xi': 'ξ', r'\pi': 'π', r'\rho': 'ρ', r'\sigma': 'σ',
         r'\tau': 'τ', r'\phi': 'φ', r'\chi': 'χ', r'\psi': 'ψ', r'\omega': 'ω',
         r'\Gamma': 'Γ', r'\Delta': 'Δ', r'\Theta': 'Θ', r'\Lambda': 'Λ',
         r'\Pi': 'Π', r'\Sigma': 'Σ', r'\Phi': 'Φ', r'\Psi': 'Ψ', r'\Omega': 'Ω',
         r'\times': '×', r'\div': '÷', r'\pm': '±', r'\cdot': '·',
         r'\leq': '≤', r'\geq': '≥', r'\neq': '≠', r'\approx': '≈', r'\equiv': '≡',
         r'\rightarrow': '→', r'\to': '→', r'\leftarrow': '←', r'\leftrightarrow': '↔',
-        r'\Rightarrow': '⇒', r'\uparrow': '↑', r'\downarrow': '↓',
-        r'\in': '∈', r'\subset': '⊂', r'\cup': '∪', r'\cap': '∩',
-        r'\infty': '∞', r'\forall': '∀', r'\exists': '∃',
-        r'\int': '∫', r'\sum': '∑', r'\prod': '∏', r'\partial': '∂', r'\nabla': '∇',
-        r'\hbar': 'ℏ', r'\sqrt': '√', r'\angle': '∠',
+        r'\in': '∈', r'\infty': '∞', r'\int': '∫', r'\sum': '∑', r'\partial': '∂',
+        r'\hbar': 'ℏ', r'\sqrt': '√',
     }
     
     for latex, unicode_char in replacements.items():
@@ -257,152 +136,148 @@ def convert_latex_to_unicode(latex_text):
     
     result = re.sub(r'\\frac\{([^}]+)\}\{([^}]+)\}', r'(\1)/(\2)', result)
     
-    def convert_superscript(match):
-        sup_map = {'0':'⁰','1':'¹','2':'²','3':'³','4':'⁴','5':'⁵','6':'⁶','7':'⁷','8':'⁸','9':'⁹','+':'⁺','-':'⁻'}
-        return ''.join(sup_map.get(c, c) for c in match.group(1))
+    def to_super(m):
+        s = {'0':'⁰','1':'¹','2':'²','3':'³','4':'⁴','5':'⁵','6':'⁶','7':'⁷','8':'⁸','9':'⁹','+':'⁺','-':'⁻'}
+        return ''.join(s.get(c,c) for c in m.group(1))
     
-    def convert_subscript(match):
-        sub_map = {'0':'₀','1':'₁','2':'₂','3':'₃','4':'₄','5':'₅','6':'₆','7':'₇','8':'₈','9':'₉','s':'ₛ','n':'ₙ','z':'ᵤ'}
-        return ''.join(sub_map.get(c, c) for c in match.group(1))
+    def to_sub(m):
+        s = {'0':'₀','1':'₁','2':'₂','3':'₃','4':'₄','5':'₅','6':'₆','7':'₇','8':'₈','9':'₉','s':'ₛ','n':'ₙ','z':'ᵤ'}
+        return ''.join(s.get(c,c) for c in m.group(1))
     
-    result = re.sub(r'\^\{([^}]+)\}', convert_superscript, result)
-    result = re.sub(r'_\{([^}]+)\}', convert_subscript, result)
-    
+    result = re.sub(r'\^\{([^}]+)\}', to_super, result)
+    result = re.sub(r'_\{([^}]+)\}', to_sub, result)
     result = result.replace('{', '').replace('}', '')
     result = re.sub(r'\\[a-zA-Z]+', '', result)
     result = result.replace('\\', '')
-    
     return result.strip()
 
-def extract_and_format_text(text, paragraph, font_size):
-    """Format text with inline styles"""
+def format_text(text, para, size):
     i = 0
-    current_text = ""
+    curr = ""
     
     while i < len(text):
-        processed = False
+        done = False
         
         if text[i:i+2] == '\\[':
-            if current_text:
-                paragraph.add_run(current_text).font.size = Pt(font_size)
-                current_text = ""
-            end = text.find('\\]', i + 2)
+            if curr:
+                para.add_run(curr).font.size = Pt(size)
+                curr = ""
+            end = text.find('\\]', i+2)
             if end != -1:
                 math = convert_latex_to_unicode(text[i+2:end].strip())
-                run = paragraph.add_run(math)
-                run.font.name = 'Cambria Math'
-                run.font.size = Pt(font_size + 1)
-                run.font.color.rgb = RGBColor(0, 120, 0)
-                run.bold = True
-                i = end + 2
-                processed = True
+                r = para.add_run(math)
+                r.font.name = 'Cambria Math'
+                r.font.size = Pt(size+1)
+                r.font.color.rgb = RGBColor(0,120,0)
+                r.bold = True
+                i = end+2
+                done = True
         
-        if not processed and text[i:i+2] == '\\(':
-            if current_text:
-                paragraph.add_run(current_text).font.size = Pt(font_size)
-                current_text = ""
-            end = text.find('\\)', i + 2)
+        if not done and text[i:i+2] == '\\(':
+            if curr:
+                para.add_run(curr).font.size = Pt(size)
+                curr = ""
+            end = text.find('\\)', i+2)
             if end != -1:
                 math = convert_latex_to_unicode(text[i+2:end].strip())
-                run = paragraph.add_run(' ' + math + ' ')
-                run.font.name = 'Cambria Math'
-                run.font.size = Pt(font_size)
-                run.font.color.rgb = RGBColor(0, 120, 0)
-                run.bold = True
-                i = end + 2
-                processed = True
+                r = para.add_run(' '+math+' ')
+                r.font.name = 'Cambria Math'
+                r.font.size = Pt(size)
+                r.font.color.rgb = RGBColor(0,120,0)
+                r.bold = True
+                i = end+2
+                done = True
         
-        if not processed and text[i:i+2] == '**':
-            if current_text:
-                paragraph.add_run(current_text).font.size = Pt(font_size)
-                current_text = ""
-            end = text.find('**', i + 2)
+        if not done and text[i:i+2] == '**':
+            if curr:
+                para.add_run(curr).font.size = Pt(size)
+                curr = ""
+            end = text.find('**', i+2)
             if end != -1:
-                run = paragraph.add_run(text[i+2:end])
-                run.bold = True
-                run.font.size = Pt(font_size)
-                i = end + 2
-                processed = True
+                r = para.add_run(text[i+2:end])
+                r.bold = True
+                r.font.size = Pt(size)
+                i = end+2
+                done = True
         
-        if not processed and text[i] == '*' and (i == 0 or text[i-1] != '*') and (i+1 >= len(text) or text[i+1] != '*'):
-            if current_text:
-                paragraph.add_run(current_text).font.size = Pt(font_size)
-                current_text = ""
-            end = i + 1
-            while end < len(text) and not (text[end] == '*' and (end+1 >= len(text) or text[end+1] != '*')):
+        if not done and text[i] == '*' and (i==0 or text[i-1]!='*') and (i+1>=len(text) or text[i+1]!='*'):
+            if curr:
+                para.add_run(curr).font.size = Pt(size)
+                curr = ""
+            end = i+1
+            while end < len(text) and not (text[end]=='*' and (end+1>=len(text) or text[end+1]!='*')):
                 end += 1
             if end < len(text):
-                run = paragraph.add_run(text[i+1:end])
-                run.italic = True
-                run.font.size = Pt(font_size)
-                i = end + 1
-                processed = True
+                r = para.add_run(text[i+1:end])
+                r.italic = True
+                r.font.size = Pt(size)
+                i = end+1
+                done = True
         
-        if not processed and text[i] == '`':
-            if current_text:
-                paragraph.add_run(current_text).font.size = Pt(font_size)
-                current_text = ""
-            end = text.find('`', i + 1)
+        if not done and text[i] == '`':
+            if curr:
+                para.add_run(curr).font.size = Pt(size)
+                curr = ""
+            end = text.find('`', i+1)
             if end != -1:
-                run = paragraph.add_run(text[i+1:end])
-                run.font.name = 'Courier New'
-                run.font.size = Pt(font_size - 1)
-                run.font.color.rgb = RGBColor(220, 50, 50)
-                i = end + 1
-                processed = True
+                r = para.add_run(text[i+1:end])
+                r.font.name = 'Courier New'
+                r.font.size = Pt(size-1)
+                r.font.color.rgb = RGBColor(220,50,50)
+                i = end+1
+                done = True
         
-        if not processed:
-            current_text += text[i]
+        if not done:
+            curr += text[i]
             i += 1
     
-    if current_text:
-        paragraph.add_run(current_text).font.size = Pt(font_size)
+    if curr:
+        para.add_run(curr).font.size = Pt(size)
 
-def convert_with_python_docx(markdown_text, title, font_size, use_colors):
-    """Convert with python-docx"""
+def convert_to_docx(md_text, title, size, colors):
     doc = Document()
     
-    title_para = doc.add_heading(title, 0)
-    title_para.alignment = WD_PARAGRAPH_ALIGNMENT.CENTER
+    tp = doc.add_heading(title, 0)
+    tp.alignment = WD_PARAGRAPH_ALIGNMENT.CENTER
     
-    if '\\[' in markdown_text:
-        markdown_text = re.sub(r'\\\[(.*?)\\\]', lambda m: '\\[' + m.group(1).replace('\n', ' ') + '\\]', markdown_text, flags=re.DOTALL)
+    if '\\[' in md_text:
+        md_text = re.sub(r'\\\[(.*?)\\\]', lambda m: '\\['+m.group(1).replace('\n',' ')+'\\]', md_text, flags=re.DOTALL)
     
-    lines = markdown_text.split('\n')
+    lines = md_text.split('\n')
     in_code = False
-    code_lines = []
+    code = []
     i = 0
     
     while i < len(lines):
         line = lines[i]
         
-        if '|' in line and i+1 < len(lines) and '---' in lines[i+1]:
-            table_data, end_idx = parse_table(lines, i)
-            if table_data:
-                table = doc.add_table(rows=1+len(table_data['rows']), cols=len(table_data['headers']))
-                table.style = 'Light Grid Accent 1'
-                add_table_border(table)
-                for idx, h in enumerate(table_data['headers']):
-                    table.rows[0].cells[idx].text = h
-                    for p in table.rows[0].cells[idx].paragraphs:
+        if '|' in line and i+1<len(lines) and '---' in lines[i+1]:
+            td, ei = parse_table(lines, i)
+            if td:
+                t = doc.add_table(rows=1+len(td['rows']), cols=len(td['headers']))
+                t.style = 'Light Grid Accent 1'
+                add_table_border(t)
+                for idx, h in enumerate(td['headers']):
+                    t.rows[0].cells[idx].text = h
+                    for p in t.rows[0].cells[idx].paragraphs:
                         for r in p.runs:
                             r.font.bold = True
-                            r.font.size = Pt(font_size)
-                for r_idx, row in enumerate(table_data['rows']):
-                    for c_idx, cell in enumerate(row):
-                        if c_idx < len(table.rows[r_idx+1].cells):
-                            table.rows[r_idx+1].cells[c_idx].text = cell
-                i = end_idx
+                            r.font.size = Pt(size)
+                for ri, row in enumerate(td['rows']):
+                    for ci, cell in enumerate(row):
+                        if ci < len(t.rows[ri+1].cells):
+                            t.rows[ri+1].cells[ci].text = cell
+                i = ei
                 continue
         
         if line.strip().startswith('```'):
             if in_code:
-                para = doc.add_paragraph('\n'.join(code_lines))
-                para.style = 'Intense Quote'
-                for r in para.runs:
+                p = doc.add_paragraph('\n'.join(code))
+                p.style = 'Intense Quote'
+                for r in p.runs:
                     r.font.name = 'Courier New'
-                    r.font.size = Pt(font_size - 1)
-                code_lines = []
+                    r.font.size = Pt(size-1)
+                code = []
                 in_code = False
             else:
                 in_code = True
@@ -410,51 +285,51 @@ def convert_with_python_docx(markdown_text, title, font_size, use_colors):
             continue
         
         if in_code:
-            code_lines.append(line)
+            code.append(line)
             i += 1
             continue
         
         if line.strip() == '---':
-            para = doc.add_paragraph('─' * 80)
-            for r in para.runs:
-                r.font.color.rgb = RGBColor(200, 200, 200)
+            p = doc.add_paragraph('─'*80)
+            for r in p.runs:
+                r.font.color.rgb = RGBColor(200,200,200)
             i += 1
             continue
         
         if line.startswith('# ') and not line.startswith('## '):
-            para = doc.add_heading('', 1)
-            extract_and_format_text(line[2:], para, font_size + 2)
-            if use_colors:
-                for r in para.runs:
+            p = doc.add_heading('', 1)
+            format_text(line[2:], p, size+2)
+            if colors:
+                for r in p.runs:
                     if not r.font.color.rgb:
-                        r.font.color.rgb = RGBColor(0, 51, 102)
+                        r.font.color.rgb = RGBColor(0,51,102)
         elif line.startswith('## ') and not line.startswith('### '):
-            para = doc.add_heading('', 2)
-            extract_and_format_text(line[3:], para, font_size + 1)
-            if use_colors:
-                for r in para.runs:
+            p = doc.add_heading('', 2)
+            format_text(line[3:], p, size+1)
+            if colors:
+                for r in p.runs:
                     if not r.font.color.rgb:
-                        r.font.color.rgb = RGBColor(51, 102, 153)
+                        r.font.color.rgb = RGBColor(51,102,153)
         elif line.startswith('### '):
-            para = doc.add_heading('', 3)
-            extract_and_format_text(line[4:], para, font_size)
-            if use_colors:
-                for r in para.runs:
+            p = doc.add_heading('', 3)
+            format_text(line[4:], p, size)
+            if colors:
+                for r in p.runs:
                     if not r.font.color.rgb:
-                        r.font.color.rgb = RGBColor(102, 153, 204)
+                        r.font.color.rgb = RGBColor(102,153,204)
         elif line.strip().startswith('- ') or line.strip().startswith('* '):
-            para = doc.add_paragraph(style='List Bullet')
-            extract_and_format_text(line.strip()[2:], para, font_size)
+            p = doc.add_paragraph(style='List Bullet')
+            format_text(line.strip()[2:], p, size)
         elif re.match(r'^\d+\.\s', line.strip()):
-            para = doc.add_paragraph(style='List Number')
-            extract_and_format_text(re.sub(r'^\d+\.\s', '', line.strip()), para, font_size)
+            p = doc.add_paragraph(style='List Number')
+            format_text(re.sub(r'^\d+\.\s','',line.strip()), p, size)
         elif line.strip().startswith('>'):
-            para = doc.add_paragraph()
-            para.style = 'Intense Quote'
-            extract_and_format_text(line.strip()[1:].strip(), para, font_size)
+            p = doc.add_paragraph()
+            p.style = 'Intense Quote'
+            format_text(line.strip()[1:].strip(), p, size)
         elif line.strip():
-            para = doc.add_paragraph()
-            extract_and_format_text(line, para, font_size)
+            p = doc.add_paragraph()
+            format_text(line, p, size)
         
         i += 1
     
@@ -463,72 +338,63 @@ def convert_with_python_docx(markdown_text, title, font_size, use_colors):
     bio.seek(0)
     return bio.getvalue()
 
-# Main content
-st.subheader("📝 Paste Your Markdown Content")
+# Main UI
+st.subheader("📝 Paste Markdown")
 
-if use_pandoc:
-    st.info("**Math Syntax:** Use `$...$` for inline and `$$...$$` for display math (Pandoc format)")
-else:
-    st.info("**Math Syntax:** Use `\\(...\\)` for inline and `\\[...\\]` for display math (Python-docx format)")
+st.info("**Math:** Use `\\(...\\)` for inline and `\\[...\\]` for display")
 
-markdown_input = st.text_area(
-    "Markdown Content",
+md_input = st.text_area(
+    "Content",
     value=st.session_state['markdown_content'],
-    height=400,
-    help="Paste your markdown here"
+    height=400
 )
 
-st.session_state['markdown_content'] = markdown_input
+st.session_state['markdown_content'] = md_input
 
-# Process button
-if st.button("🔄 Process & Download", type="primary", use_container_width=True):
-    with st.spinner("🔄 Processing..."):
+if st.button("🔄 Convert to Word", type="primary", use_container_width=True):
+    with st.spinner("Processing..."):
         try:
-            if use_pandoc:
-                docx_data = convert_with_pandoc(
-                    st.session_state['markdown_content'],
-                    doc_title,
-                    use_toc,
-                    number_sections
-                )
-                st.success("✅ Converted with Pandoc - Equations are editable!")
-            else:
-                docx_data = convert_with_python_docx(
-                    st.session_state['markdown_content'],
-                    doc_title,
-                    font_size,
-                    use_colors
-                )
-                st.success("✅ Converted with Python-docx - Unicode symbols used")
+            docx_data = convert_to_docx(
+                st.session_state['markdown_content'],
+                doc_title,
+                font_size,
+                use_colors
+            )
+            
+            st.success("✅ Ready!")
             
             st.download_button(
-                label="⬇️ Download Word Document",
+                "⬇️ Download Word",
                 data=docx_data,
-                file_name=f"{doc_title.replace(' ', '_')}.docx",
+                file_name=f"{doc_title.replace(' ','_')}.docx",
                 mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
                 type="primary",
                 use_container_width=True
             )
             
         except Exception as e:
-            st.error(f"❌ Error: {str(e)}")
+            st.error(f"❌ {str(e)}")
 
-# Footer
 st.divider()
-st.markdown(f"""
-### 💡 Current Mode: **{'Pandoc (Editable Equations)' if use_pandoc else 'Python-docx (Unicode Symbols)'}**
+st.markdown("""
+### ✅ Cloud Deployment Ready
 
-**Pandoc Method:**
-- ✅ Creates editable Word equations
-- ✅ Professional quality
-- ❌ Requires Pandoc installation
-- ❌ Not available on Streamlit Cloud
+**requirements.txt:**
+```
+streamlit
+python-docx
+requests
+```
 
-**Python-docx Method:**
-- ✅ Works everywhere (Streamlit Cloud, GitHub)
-- ✅ No installation needed
-- ❌ Unicode symbols only (not editable equations)
-- ✅ Good for viewing/printing
+**Deploy to Streamlit Cloud:**
+1. Push code to GitHub
+2. Go to share.streamlit.io
+3. Deploy!
 
-**Recommendation:** Use Pandoc locally, Python-docx for cloud deployment
+**Features:**
+- ✅ Works on all cloud platforms
+- ✅ No external dependencies
+- ✅ LaTeX → Unicode (α, β, etc.)
+- ✅ Tables, lists, code blocks
+- ✅ GitHub import
 """)
